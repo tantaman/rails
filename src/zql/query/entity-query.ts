@@ -5,7 +5,7 @@ import {
   Selectable,
   SelectedFields,
 } from './entity-query-type.js';
-import {Statement, StatementImpl} from './statement.js';
+import {Statement} from './statement.js';
 import {AST, Operator, Primitive} from '../ast/ast.js';
 import {Context} from '../context/context.js';
 

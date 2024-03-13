@@ -6,8 +6,10 @@ import {MutableSetSource} from '../ivm/source/set-source.js';
 import {assert, invariant} from '../error/asserts.js';
 import {compareEntityFields} from '../ivm/compare.js';
 import {Ordering} from '../ast/ast.js';
+import type {Context} from './context.js';
+import {mapIter} from '../util/iterables.js';
 
-export function makeReplicacheContext(rep: Replicache) {
+export function makeReplicacheContext(rep: Replicache): Context {
   const materialite = new Materialite();
   const sourceStore = new ReplicacheSourceStore(rep, materialite);
 
@@ -62,6 +64,7 @@ class ReplicacheSource {
   readonly #materialite;
   readonly #sources: Map<string, Source<Entity>> = new Map();
   readonly #canonicalSource: MutableSetSource<Entity>;
+  #receivedFirstDiif = false;
 
   constructor(rep: Replicache, materialite: Materialite, name: string) {
     this.#canonicalSource =
@@ -74,6 +77,28 @@ class ReplicacheSource {
   }
 
   #onReplicacheDiff = (changes: ExperimentalNoIndexDiff) => {
+    // The first diff is the set of initial values
+    // to seed the source. We don't process these
+    // through the dataflow graph.
+    // Views will explicitly request historical data as needed.
+    if (this.#receivedFirstDiif === false) {
+      this.#canonicalSource.seed(
+        mapIter(changes, diff => {
+          assert(diff.op === 'add');
+          return diff.newValue as Entity;
+        }),
+      );
+      for (const derived of this.#sources.values()) {
+        derived.seed(
+          mapIter(changes, diff => {
+            assert(diff.op === 'add');
+            return diff.newValue as Entity;
+          }),
+        );
+      }
+      this.#receivedFirstDiif = true;
+      return;
+    }
     this.#materialite.tx(() => {
       for (const diff of changes) {
         if (diff.op === 'del' || diff.op === 'change') {
