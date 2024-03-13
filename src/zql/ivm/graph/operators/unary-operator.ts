@@ -1,7 +1,7 @@
-import {Multiset} from '../../multiset.js';
 import {Version} from '../../types.js';
 import {DifferenceStreamReader} from '../difference-stream-reader.js';
 import {DifferenceStreamWriter} from '../difference-stream-writer.js';
+import {QueueEntry} from '../queue.js';
 import {Operator} from './operator.js';
 
 export class UnaryOperator<I, O> extends Operator<O> {
@@ -14,6 +14,6 @@ export class UnaryOperator<I, O> extends Operator<O> {
   }
 
   inputMessages(version: Version) {
-    return (this._inputs[0]?.drain(version) ?? []) as Multiset<I>[];
+    return (this._inputs[0]?.drain(version) ?? []) as QueueEntry<I>[];
   }
 }
