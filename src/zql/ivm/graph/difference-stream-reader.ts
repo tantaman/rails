@@ -4,6 +4,7 @@ import {Version} from '../types.js';
 import {Queue} from './queue.js';
 import {IOperator} from './operators/operator.js';
 import {DifferenceStreamWriter} from './difference-stream-writer.js';
+import {Request} from './message.js';
 
 /**
  * Represents the input to an operator.
@@ -84,5 +85,9 @@ export class DifferenceStreamReader<T = unknown> {
   destroy() {
     this.#upstreamWriter.removeReaderAndMaybeDestroy(this);
     this.#queue.clear();
+  }
+
+  messageUpstream(message: Request) {
+    this.#upstreamWriter.messageUpstream(message, this);
   }
 }
