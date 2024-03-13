@@ -122,7 +122,6 @@ export class EntityQuery<S extends EntitySchema, TReturn = []>
   }
 
   prepare(): Statement<TReturn> {
-    // TODO: build the IVM pipeline
-    return new StatementImpl<S, TReturn>(this.#context, this);
+    return new Statement<TReturn>(this.#context, this);
   }
 }

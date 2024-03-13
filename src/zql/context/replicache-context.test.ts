@@ -136,7 +136,7 @@ test('ZQL query with Replicache', async () => {
 
   const q = new EntityQuery<{fields: E1}>(context, 'e1');
 
-  const view = q.select('id').where('str', '>', 'm').prepare().materialize();
+  const view = q.select('id').where('str', '>', 'm').prepare().view();
 
   await Promise.all([
     r.mutate.initE1({id: '1', str: 'c'}),
