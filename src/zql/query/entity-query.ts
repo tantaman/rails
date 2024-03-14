@@ -22,6 +22,7 @@ export class EntityQuery<S extends EntitySchema, TReturn = []>
     this.#ast = ast ?? {
       table: tableName,
       alias: aliasCount++,
+      orderBy: [['id'], 'asc'],
     };
     this.#name = tableName;
     this.#context = context;
@@ -83,8 +84,8 @@ export class EntityQuery<S extends EntitySchema, TReturn = []>
   }
 
   asc(...x: (keyof S['fields'])[]) {
-    if (this.#ast.orderBy !== undefined) {
-      throw new Misuse('OrderBy already set');
+    if (!x.includes('id')) {
+      x.push('id');
     }
 
     return new EntityQuery<S, TReturn>(this.#context, this.#name, {
@@ -94,8 +95,8 @@ export class EntityQuery<S extends EntitySchema, TReturn = []>
   }
 
   desc(...x: (keyof S['fields'])[]) {
-    if (this.#ast.orderBy !== undefined) {
-      throw new Misuse('OrderBy already set');
+    if (!x.includes('id')) {
+      x.push('id');
     }
 
     return new EntityQuery<S, TReturn>(this.#context, this.#name, {
