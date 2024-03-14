@@ -3,7 +3,7 @@ import {Materialite} from '../ivm/materialite.js';
 import {Entity} from '../../generate.js';
 import {Source} from '../ivm/source/source.js';
 import {MutableSetSource} from '../ivm/source/set-source.js';
-import {assert, invariant} from '../error/asserts.js';
+import {assert} from '../error/asserts.js';
 import {compareEntityFields} from '../ivm/compare.js';
 import {Ordering} from '../ast/ast.js';
 import type {Context} from './context.js';
@@ -158,10 +158,6 @@ function makeComparator(key: string[]) {
     for (const k of key) {
       const lVal = l[k as unknown as keyof T];
       const rVal = r[k as unknown as keyof T];
-      invariant(
-        lVal !== undefined && rVal !== undefined,
-        `Key ${k} not found in entities`,
-      );
       const comp = compareEntityFields(lVal, rVal);
       if (comp !== 0) {
         return comp;
