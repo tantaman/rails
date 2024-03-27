@@ -1,3 +1,4 @@
+import {Primitive} from '../../ast/ast.js';
 import {Multiset} from '../multiset.js';
 import {Source} from '../source/source.js';
 import {Version} from '../types.js';
@@ -6,11 +7,12 @@ import {
   RootDifferenceStreamWriter,
 } from './difference-stream-writer.js';
 import {IDifferenceStream} from './idifference-stream.js';
-import {LinearCountOperator} from './operators/count-operator.js';
+import {LinearCountOperator} from './operators/full-agg-operators.js';
 import {DebugOperator} from './operators/debug-operator.js';
 import {DifferenceEffectOperator} from './operators/difference-effect-operator.js';
 import {FilterOperator} from './operators/filter-operator.js';
 import {MapOperator} from './operators/map-operator.js';
+import {ReduceOperator} from './operators/reduce-operator.js';
 import {QueueEntry} from './queue.js';
 
 /**
@@ -43,6 +45,22 @@ export class DifferenceStream<T> implements IDifferenceStream<T> {
     new FilterOperator<T>(
       this.#upstreamWriter.newReader(),
       ret.#upstreamWriter,
+      f,
+    );
+    return ret;
+  }
+
+  reduce<K extends Primitive, O>(
+    getKey: (value: T) => K,
+    getIdentity: (value: T) => string,
+    f: (input: Iterable<T>) => O,
+  ): DifferenceStream<O> {
+    const ret = new DifferenceStream<O>();
+    new ReduceOperator<K, T, O>(
+      this.#upstreamWriter.newReader(),
+      ret.#upstreamWriter,
+      getIdentity,
+      getKey,
       f,
     );
     return ret;

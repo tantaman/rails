@@ -1,17 +1,68 @@
-import {AST, Operator, Primitive} from '../ast/ast.js';
+import {
+  AST,
+  Aggregation,
+  Condition,
+  Primitive,
+  SimpleCondition,
+  SimpleOperator,
+} from '../ast/ast.js';
 import {Context} from '../context/context.js';
 import {must} from '../error/asserts.js';
 import {Misuse} from '../error/misuse.js';
 import {EntitySchema} from '../schema/entity-schema.js';
+import {AggArray, Aggregate, Count} from './agg.js';
 import {Statement} from './statement.js';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type SelectedFields<T, Fields extends Selectable<any>[]> = Pick<
-  T,
-  Fields[number] extends keyof T ? Fields[number] : never
+type FieldValue<
+  S extends EntitySchema,
+  K extends Selectable<S>,
+> = S['fields'][K] extends Primitive | undefined ? S['fields'][K] : never;
+
+type AggregateValue<
+  S extends EntitySchema,
+  K extends Aggregate<AsString<keyof S['fields']>, string>,
+> =
+  K extends Count<string, string>
+    ? number
+    : K extends AggArray<string, string>
+      ? S['fields'][K['field']][]
+      : S['fields'][K['field']];
+
+export type SelectedFields<
+  S extends EntitySchema,
+  Fields extends Selectable<EntitySchema>[],
+> = Pick<
+  S['fields'],
+  Fields[number] extends keyof S['fields'] ? Fields[number] : never
 >;
 
-export type Selectable<T extends EntitySchema> = keyof T['fields'];
+type SelectedAggregates<
+  S extends EntitySchema,
+  Aggregates extends Aggregate<AsString<keyof S['fields']>, string>[],
+> = {
+  [K in Aggregates[number]['alias']]: AggregateValue<
+    S,
+    Extract<Aggregates[number], {alias: K}>
+  >;
+};
+
+type AsString<T> = T extends string ? T : never;
+
+export type Selectable<S extends EntitySchema> =
+  | AsString<keyof S['fields']>
+  | 'id';
+
+type ToSelectableOnly<T, S extends EntitySchema> = T extends (infer U)[]
+  ? U extends Selectable<S>
+    ? U[]
+    : never
+  : never;
+
+type ToAggrableOnly<T, S extends EntitySchema> = T extends (infer U)[]
+  ? U extends Aggregate<AsString<keyof S['fields']>, string>
+    ? U[]
+    : never
+  : never;
 
 /**
  * Have you ever noticed that when you hover over Types in TypeScript, it shows
@@ -25,34 +76,9 @@ export type MakeHumanReadable<T> = {} & {
   readonly [P in keyof T]: T[P] extends string ? T[P] : MakeHumanReadable<T[P]>;
 };
 
-export interface EntityQuery<Schema extends EntitySchema, Return = []> {
-  readonly select: <Fields extends Selectable<Schema>[]>(
-    ...x: Fields
-  ) => EntityQuery<Schema, SelectedFields<Schema['fields'], Fields>[]>;
-  readonly count: () => EntityQuery<Schema, number>;
-  readonly where: <K extends keyof Schema['fields']>(
-    f: K,
-    op: Operator,
-    value: Schema['fields'][K],
-  ) => EntityQuery<Schema, Return>;
-  readonly limit: (n: number) => EntityQuery<Schema, Return>;
-  readonly asc: (
-    ...x: (keyof Schema['fields'])[]
-  ) => EntityQuery<Schema, Return>;
-  readonly desc: (
-    ...x: (keyof Schema['fields'])[]
-  ) => EntityQuery<Schema, Return>;
-
-  // TODO: we can probably skip the `prepare` step and just have `materialize`
-  // Although we'd need the prepare step in order to get a stmt to change bindings.
-  readonly prepare: () => Statement<Return>;
-}
-
 let aliasCount = 0;
 
-export class EntityQueryImpl<S extends EntitySchema, Return = []>
-  implements EntityQuery<S, Return>
-{
+export class EntityQuery<S extends EntitySchema, Return = []> {
   readonly #ast: AST;
   readonly #name: string;
   readonly #context: Context;
@@ -70,47 +96,72 @@ export class EntityQueryImpl<S extends EntitySchema, Return = []>
     astWeakMap.set(this, this.#ast);
   }
 
-  select<Fields extends Selectable<S>[]>(...x: Fields) {
-    if (this.#ast.select === 'count') {
-      throw new Misuse(
-        'A query can either return fields or a count, not both.',
-      );
-    }
+  select<
+    Fields extends (
+      | Selectable<S>
+      | Aggregate<AsString<keyof S['fields']>, string>
+    )[],
+  >(...x: Fields) {
     const select = new Set(this.#ast.select);
+    const aggregate: Aggregation[] = [];
     for (const more of x) {
-      select.add(more as string);
+      if (typeof more !== 'object') {
+        select.add(more);
+        continue;
+      }
+      aggregate.push(more);
     }
 
-    return new EntityQueryImpl<S, SelectedFields<S['fields'], Fields>[]>(
-      this.#context,
-      this.#name,
-      {
-        ...this.#ast,
-        select: [...select],
-      },
-    );
+    return new EntityQuery<
+      S,
+      (SelectedFields<S, ToSelectableOnly<Fields, S>> &
+        SelectedAggregates<S, ToAggrableOnly<Fields, S>>)[]
+    >(this.#context, this.#name, {
+      ...this.#ast,
+      select: [...select],
+      aggregate,
+    });
   }
 
-  where<K extends keyof S['fields']>(
-    field: K,
-    op: Operator,
-    value: S['fields'][K],
-  ) {
-    return new EntityQueryImpl<S, Return>(this.#context, this.#name, {
+  groupBy<K extends keyof S['fields']>(...x: K[]) {
+    return new EntityQuery<S, Return>(this.#context, this.#name, {
       ...this.#ast,
-      where: [
-        ...(this.#ast.where !== undefined
-          ? [...this.#ast.where, 'AND' as const]
-          : []),
-        {
-          field: field as string,
-          op,
-          value: {
-            type: 'literal',
-            value: value as Primitive,
-          },
-        },
-      ],
+      groupBy: x as string[],
+    });
+  }
+
+  where<K extends Selectable<S>>(
+    field: K,
+    op: SimpleOperator,
+    value: FieldValue<S, K>,
+  ) {
+    const leaf: SimpleCondition = {
+      field,
+      op,
+      value: {
+        type: 'literal',
+        value: value as Primitive,
+      },
+    };
+
+    let cond: Condition;
+    if (!this.#ast.where) {
+      cond = leaf;
+    } else if (this.#ast.where.op === 'AND') {
+      cond = {
+        op: 'AND',
+        conditions: [...this.#ast.where.conditions, leaf],
+      };
+    } else {
+      cond = {
+        op: 'AND',
+        conditions: [this.#ast.where, leaf],
+      };
+    }
+
+    return new EntityQuery<S, Return>(this.#context, this.#name, {
+      ...this.#ast,
+      where: cond,
     });
   }
 
@@ -119,43 +170,31 @@ export class EntityQueryImpl<S extends EntitySchema, Return = []>
       throw new Misuse('Limit already set');
     }
 
-    return new EntityQueryImpl<S, Return>(this.#context, this.#name, {
+    return new EntityQuery<S, Return>(this.#context, this.#name, {
       ...this.#ast,
       limit: n,
     });
   }
 
-  asc(...x: (keyof S['fields'])[]) {
+  asc(...x: Selectable<S>[]) {
     if (!x.includes('id')) {
       x.push('id');
     }
 
-    return new EntityQueryImpl<S, Return>(this.#context, this.#name, {
+    return new EntityQuery<S, Return>(this.#context, this.#name, {
       ...this.#ast,
-      orderBy: [x as string[], 'asc'],
+      orderBy: [x, 'asc'],
     });
   }
 
-  desc(...x: (keyof S['fields'])[]) {
+  desc(...x: Selectable<S>[]) {
     if (!x.includes('id')) {
       x.push('id');
     }
 
-    return new EntityQueryImpl<S, Return>(this.#context, this.#name, {
+    return new EntityQuery<S, Return>(this.#context, this.#name, {
       ...this.#ast,
-      orderBy: [x as string[], 'desc'],
-    });
-  }
-
-  count() {
-    if (this.#ast.select !== undefined) {
-      throw new Misuse(
-        'Selection set already set. Will not change to a count query.',
-      );
-    }
-    return new EntityQueryImpl<S, number>(this.#context, this.#name, {
-      ...this.#ast,
-      select: 'count',
+      orderBy: [x, 'desc'],
     });
   }
 
@@ -164,8 +203,8 @@ export class EntityQueryImpl<S extends EntitySchema, Return = []>
   }
 }
 
-const astWeakMap = new WeakMap<EntityQueryImpl<EntitySchema, unknown>, AST>();
+const astWeakMap = new WeakMap<EntityQuery<EntitySchema, unknown>, AST>();
 
-export function astForTesting(q: EntityQueryImpl<EntitySchema, unknown>): AST {
+export function astForTesting(q: EntityQuery<EntitySchema, unknown>): AST {
   return must(astWeakMap.get(q));
 }

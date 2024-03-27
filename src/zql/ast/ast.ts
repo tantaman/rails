@@ -3,37 +3,67 @@
 
 // TODO: the chosen operator needs to constrain the allowed values for the value
 // input to the query builder.
-export type Operator = '=' | '<' | '>' | '>=' | '<=' | 'IN' | 'LIKE' | 'ILIKE';
 export type Ordering = readonly [readonly string[], 'asc' | 'desc'];
 export type Primitive = string | number | boolean | null;
+
+// I think letting users provide their own lambda functions
+// to perform the aggregation would make the most sense.
+// We should should extend that to let users provide `filter`, `map`, and `reduce` lambdas
+// to do things not available in the query language itself.
+export type Aggregate = 'sum' | 'avg' | 'min' | 'max' | 'array' | 'count';
+export type Aggregation = {
+  readonly field: string;
+  readonly alias: string;
+  readonly aggregate: Aggregate;
+};
+
 // type Ref = `${string}.${string}`;
+
+/**
+ * Note: We'll eventually need to start ordering conditions
+ * in the dataflow graph so we get the maximum amount
+ * of sharing between queries.
+ */
 export type AST = {
   readonly table?: string | undefined;
   readonly alias?: number | undefined;
-  readonly select?: string[] | 'count' | undefined;
+  readonly select?: string[] | undefined;
+  readonly aggregate?: Aggregation[];
   // readonly subQueries?: {
   //   readonly alias: string;
   //   readonly query: AST;
   // }[];
-  readonly where?: ConditionList | undefined;
+  readonly where?: Condition | undefined;
   // readonly joins?: {
   //   readonly table: string;
   //   readonly as: string;
   //   readonly on: ConditionList;
   // }[];
   readonly limit?: number | undefined;
-  // readonly groupBy?: string[];
-  readonly orderBy?: Ordering | undefined;
+  readonly groupBy?: string[];
+  readonly orderBy: Ordering;
   // readonly after?: Primitive;
 };
 
-type Conjunction = 'AND'; // | 'OR' | 'NOT' | 'EXISTS';
-export type ConditionList = (Conjunction | Condition)[];
-export type Condition =
+export type Condition = SimpleCondition | Conjunction;
+export type Conjunction = {
+  op: 'AND'; // future OR
+  conditions: Condition[];
+};
+export type SimpleOperator =
+  | '='
+  | '<'
+  | '>'
+  | '>='
+  | '<='
+  | 'IN'
+  | 'LIKE'
+  | 'ILIKE';
+export type SimpleCondition =
   // | ConditionList
   {
+    op: SimpleOperator;
     field: string;
-    op: Operator;
     value: {
       type: 'literal';
       value: Primitive;
@@ -46,3 +76,11 @@ export type Condition =
     //   value: AST;
     // };
   };
+
+//  | {
+//   type: 'ref';
+//   value: Ref;
+// } | {
+//   type: 'query';
+//   value: AST;
+// };

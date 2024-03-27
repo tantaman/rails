@@ -2,13 +2,14 @@ import {expect, test} from 'vitest';
 import {z} from 'zod';
 import {makeTestContext} from '../context/context.js';
 import {Materialite} from '../ivm/materialite.js';
-import {EntityQueryImpl, astForTesting as ast} from '../query/entity-query.js';
+import {EntityQuery, astForTesting as ast} from '../query/entity-query.js';
 import {buildPipeline} from './pipeline-builder.js';
+import {agg} from '../query/agg.js';
 
 const e1 = z.object({
   id: z.string(),
   a: z.number(),
-  b: z.bigint(),
+  b: z.number(),
   c: z.string().optional(),
   d: z.boolean(),
 });
@@ -16,7 +17,7 @@ type E1 = z.infer<typeof e1>;
 
 const context = makeTestContext();
 test('A simple select', () => {
-  const q = new EntityQueryImpl<{fields: E1}>(context, 'e1');
+  const q = new EntityQuery<{fields: E1}>(context, 'e1');
   const m = new Materialite();
   let s = m.newStatelessSource<E1>();
   let pipeline = buildPipeline(
@@ -30,8 +31,8 @@ test('A simple select', () => {
   });
 
   const expected = [
-    {id: 'a', a: 1, b: 1n, c: '', d: true},
-    {id: 'b', a: 2, b: 2n, d: false},
+    {id: 'a', a: 1, b: 1, c: '', d: true},
+    {id: 'b', a: 2, b: 2, d: false},
   ] as const;
 
   s.add(expected[0]);
@@ -55,10 +56,10 @@ test('A simple select', () => {
 });
 
 test('Count', () => {
-  const q = new EntityQueryImpl<{fields: E1}>(context, 'e1');
+  const q = new EntityQuery<{fields: E1}>(context, 'e1');
   const m = new Materialite();
-  const s = m.newStatelessSource();
-  const pipeline = buildPipeline(() => s.stream, ast(q.count()));
+  const s = m.newStatelessSource<E1>();
+  const pipeline = buildPipeline(() => s.stream, ast(q.select(agg.count())));
 
   let effectRunCount = 0;
   pipeline.effect(x => {
@@ -66,20 +67,20 @@ test('Count', () => {
   });
   const expected = [1, 2, 1, 0];
 
-  s.add({});
-  s.add({});
-  s.delete({});
-  s.delete({});
+  s.add({id: '1', a: 1, b: 1, d: false});
+  s.add({id: '2', a: 1, b: 1, d: false});
+  s.delete({id: '1', a: 1, b: 1, d: false});
+  s.delete({id: '2', a: 1, b: 1, d: false});
   expect(effectRunCount).toBe(4);
 });
 
 test('Where', () => {
-  const q = new EntityQueryImpl<{fields: E1}>(context, 'e1');
+  const q = new EntityQuery<{fields: E1}>(context, 'e1');
   const m = new Materialite();
-  const s = m.newStatelessSource();
+  const s = m.newStatelessSource<E1>();
   const pipeline = buildPipeline(
     () => s.stream,
-    ast(q.select('id').where('a', '>', 1).where('b', '<', 2n)),
+    ast(q.select('id').where('a', '>', 1).where('b', '<', 2)),
   );
 
   let effectRunCount = 0;
@@ -88,10 +89,10 @@ test('Where', () => {
   });
   const expected = [{id: 'b'}];
 
-  s.add({id: 'a', a: 1, b: 1n});
-  s.add({id: 'b', a: 2, b: 1n});
-  s.add({id: 'c', a: 1, b: 2n});
-  s.add({id: 'd', a: 2, b: 2n});
+  s.add({id: 'a', a: 1, b: 1, d: false});
+  s.add({id: 'b', a: 2, b: 1, d: false});
+  s.add({id: 'c', a: 1, b: 2, d: false});
+  s.add({id: 'd', a: 2, b: 2, d: false});
   expect(effectRunCount).toBe(1);
 });
 

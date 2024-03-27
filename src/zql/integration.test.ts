@@ -5,7 +5,8 @@ import {makeReplicacheContext} from './context/replicache-context.js';
 import {Replicache, TEST_LICENSE_KEY} from 'replicache';
 import {nanoid} from 'nanoid';
 import fc from 'fast-check';
-import {EntityQueryImpl} from './query/entity-query.js';
+import {EntityQuery} from './query/entity-query.js';
+import {agg} from './query/agg.js';
 
 export async function tickAFewTimes(n = 10, time = 0) {
   for (let i = 0; i < n; i++) {
@@ -19,9 +20,9 @@ const issueSchema = z.object({
   status: z.enum(['open', 'closed']),
   priority: z.enum(['high', 'medium', 'low']),
   assignee: z.string(),
-  created: z.date(),
-  updated: z.date(),
-  closed: z.date().optional(),
+  created: z.number(),
+  updated: z.number(),
+  closed: z.number().optional(),
 });
 
 type Issue = z.infer<typeof issueSchema>;
@@ -57,9 +58,9 @@ const issueArbitrary: fc.Arbitrary<Issue> = fc.record({
   status: fc.constantFrom('open', 'closed'),
   priority: fc.constantFrom('high', 'medium', 'low'),
   assignee: fc.string(),
-  created: fc.date(),
-  updated: fc.date(),
-  closed: fc.option(fc.date(), {nil: undefined}),
+  created: fc.integer(),
+  updated: fc.integer(),
+  closed: fc.option(fc.integer(), {nil: undefined}),
 });
 
 const tenUniqueIssues = fc.uniqueArray(issueArbitrary, {
@@ -83,7 +84,7 @@ function sampleTenUniqueIssues() {
 function setup() {
   const r = newRep();
   const c = makeReplicacheContext(r);
-  const q = new EntityQueryImpl<{fields: Issue}>(c, 'issue');
+  const q = new EntityQuery<{fields: Issue}>(c, 'issue');
   return {r, c, q};
 }
 
@@ -219,9 +220,9 @@ test('subscribing to differences', () => {});
 test('each where operator', async () => {
   // go through each operator
   // double check it against a `filter` in JS
-  const now = new Date();
-  const future = new Date(now.getTime() + 1000);
-  const past = new Date(now.getTime() - 1000);
+  const now = Date.now();
+  const future = now + 1000;
+  const past = now - 1000;
   const issues: Issue[] = [
     {
       id: 'a',
@@ -230,7 +231,7 @@ test('each where operator', async () => {
       priority: 'high',
       assignee: 'charles',
       created: past,
-      updated: new Date(),
+      updated: Date.now(),
     },
     {
       id: 'b',
@@ -239,7 +240,7 @@ test('each where operator', async () => {
       priority: 'medium',
       assignee: 'bob',
       created: now,
-      updated: new Date(),
+      updated: Date.now(),
     },
     {
       id: 'c',
@@ -248,7 +249,7 @@ test('each where operator', async () => {
       priority: 'low',
       assignee: 'alice',
       created: future,
-      updated: new Date(),
+      updated: Date.now(),
     },
   ];
 
@@ -394,7 +395,113 @@ test('order by optional field', async () => {
 
 test('join', () => {});
 test('having', () => {});
-test('group by', () => {});
+
+test('group by', async () => {
+  const {q, r} = setup();
+  const issues: Issue[] = [
+    {
+      id: 'a',
+      title: 'foo',
+      status: 'open',
+      priority: 'high',
+      assignee: 'charles',
+      created: new Date('2024-01-01').getTime(),
+      updated: new Date().getTime(),
+    },
+    {
+      id: 'b',
+      title: 'bar',
+      status: 'open',
+      priority: 'medium',
+      assignee: 'bob',
+      created: new Date('2024-01-02').getTime(),
+      updated: new Date().getTime(),
+    },
+    {
+      id: 'c',
+      title: 'baz',
+      status: 'closed',
+      priority: 'low',
+      assignee: 'alice',
+      created: new Date('2024-01-03').getTime(),
+      updated: new Date().getTime(),
+    },
+  ] as const;
+  await Promise.all(issues.map(r.mutate.initIssue));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  const stmt = q
+    .select('status', agg.count('status', 'count'))
+    .groupBy('status')
+    .prepare();
+  const rows = await stmt.exec();
+
+  expect(rows).toEqual([
+    {status: 'open', count: 2},
+    {status: 'closed', count: 1},
+  ]);
+
+  stmt.destroy();
+
+  const stmt2 = q
+    .select('status', agg.array('assignee'))
+    .groupBy('status')
+    .prepare();
+  const rows2 = await stmt2.exec();
+
+  expect(rows2).toEqual([
+    {status: 'open', assignee: ['charles', 'bob']},
+    {status: 'closed', assignee: ['alice']},
+  ]);
+
+  const stmt3 = q
+    .select('status', agg.array('assignee'), agg.min('created'))
+    .groupBy('status')
+    .prepare();
+  const rows3 = await stmt3.exec();
+
+  expect(rows3).toEqual([
+    {
+      status: 'open',
+      assignee: ['charles', 'bob'],
+      created: issues[0].created,
+    },
+    {
+      status: 'closed',
+      assignee: ['alice'],
+      created: issues[2].created,
+    },
+  ]);
+
+  const stmt4 = q
+    .select(
+      'status',
+      agg.array('assignee'),
+      agg.min('created', 'minCreated'),
+      agg.max('created', 'maxCreated'),
+    )
+    .groupBy('status')
+    .prepare();
+  const rows4 = await stmt4.exec();
+
+  expect(rows4).toEqual([
+    {
+      status: 'open',
+      assignee: ['charles', 'bob'],
+      minCreated: issues[0].created,
+      maxCreated: issues[1].created,
+    },
+    {
+      status: 'closed',
+      assignee: ['alice'],
+      minCreated: issues[2].created,
+      maxCreated: issues[2].created,
+    },
+  ]);
+
+  await r.close();
+});
+
+test('sorted groupings', () => {});
 
 test('compound where', async () => {
   const {q, r} = setup();
@@ -405,8 +512,8 @@ test('compound where', async () => {
       status: 'open',
       priority: 'high',
       assignee: 'charles',
-      created: new Date(),
-      updated: new Date(),
+      created: Date.now(),
+      updated: Date.now(),
     },
     {
       id: 'b',
@@ -414,8 +521,8 @@ test('compound where', async () => {
       status: 'open',
       priority: 'medium',
       assignee: 'bob',
-      created: new Date(),
-      updated: new Date(),
+      created: Date.now(),
+      updated: Date.now(),
     },
     {
       id: 'c',
@@ -423,8 +530,8 @@ test('compound where', async () => {
       status: 'closed',
       priority: 'low',
       assignee: 'alice',
-      created: new Date(),
-      updated: new Date(),
+      created: Date.now(),
+      updated: Date.now(),
     },
   ] as const;
   await Promise.all(issues.map(r.mutate.initIssue));
@@ -447,8 +554,6 @@ test('limit', () => {});
 
 // To be implemented here: `asEntries` in `set-source.ts`
 test('after', () => {});
-
-test('sorted groupings', () => {});
 
 test('adding items late to a source materializes them in the correct order', () => {});
 test('disposing of a subscription causes us to no longer be called back', () => {});

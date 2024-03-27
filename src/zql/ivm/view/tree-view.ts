@@ -1,11 +1,13 @@
 import {PersistentTreap} from '@vlcn.io/ds-and-algos/PersistentTreap';
-import {AbstractView} from './abstract-view.js';
-import {Materialite} from '../materialite.js';
-import {DifferenceStream} from '../graph/difference-stream.js';
-import {Version} from '../types.js';
-import {Multiset} from '../multiset.js';
-import {Comparator, ITree} from '@vlcn.io/ds-and-algos/types';
 import {Treap} from '@vlcn.io/ds-and-algos/Treap';
+import {Comparator, ITree} from '@vlcn.io/ds-and-algos/types';
+import {DifferenceStream} from '../graph/difference-stream.js';
+import {Materialite} from '../materialite.js';
+import {Multiset} from '../multiset.js';
+import {Version} from '../types.js';
+import {AbstractView} from './abstract-view.js';
+import {Ordering} from '../../ast/ast.js';
+import {createPullMessage} from '../graph/message.js';
 
 /**
  * A sink that maintains the list of values in-order.
@@ -25,7 +27,7 @@ class AbstractTreeView<T> extends AbstractView<T, T[]> {
   #limit?: number;
   #min?: T;
   #max?: T;
-  readonly #isInSourceOrder;
+  readonly #order;
   readonly id = id++;
   readonly #comparator;
 
@@ -34,15 +36,15 @@ class AbstractTreeView<T> extends AbstractView<T, T[]> {
     stream: DifferenceStream<T>,
     comparator: Comparator<T>,
     tree: ITree<T>,
-    isInSourceOrder: boolean,
-    limit?: number,
+    order: Ordering | undefined,
+    limit?: number | undefined,
     name: string = '',
   ) {
     super(materialite, stream, name);
     this.#limit = limit;
     this.#data = tree;
     this.#comparator = comparator;
-    this.#isInSourceOrder = isInSourceOrder;
+    this.#order = order;
     if (limit !== undefined) {
       this.#addAll = this.#limitedAddAll;
       this.#removeAll = this.#limitedRemoveAll;
@@ -65,7 +67,7 @@ class AbstractTreeView<T> extends AbstractView<T, T[]> {
 
     let newData = this.#data;
     for (const entry of collections) {
-      [changed, newData] = this.#sink(entry[1], newData) || changed;
+      [changed, newData] = this.#sink(entry[1], newData, changed);
     }
     this.#data = newData;
 
@@ -78,8 +80,7 @@ class AbstractTreeView<T> extends AbstractView<T, T[]> {
     }
   }
 
-  #sink(c: Multiset<T>, data: ITree<T>): [boolean, ITree<T>] {
-    let changed = false;
+  #sink(c: Multiset<T>, data: ITree<T>, changed: boolean): [boolean, ITree<T>] {
     const iterator = c.entries[Symbol.iterator]();
     let next;
 
@@ -96,7 +97,7 @@ class AbstractTreeView<T> extends AbstractView<T, T[]> {
     const fullRecompute = false;
     while (!(next = iterator.next()).done) {
       const [value, mult] = next.value;
-      if (this.#limit !== undefined && fullRecompute && this.#isInSourceOrder) {
+      if (this.#limit !== undefined && fullRecompute && this.#order) {
         if (data.size >= this.#limit && mult > 0) {
           // bail early. During a re-compute with a source in the same order
           // as the view we can bail once we've consumed `LIMIT` items.
@@ -194,6 +195,10 @@ class AbstractTreeView<T> extends AbstractView<T, T[]> {
     return data;
   }
 
+  pullHistoricalData(): void {
+    this._reader.messageUpstream(createPullMessage(this.#order, 'select'));
+  }
+
   #updateMinMax(value: T) {
     if (this.#min === undefined || this.#max === undefined) {
       this.#max = this.#min = value;
@@ -227,7 +232,7 @@ export class PersistentTreeView<T> extends AbstractTreeView<T> {
     materialite: Materialite,
     stream: DifferenceStream<T>,
     comparator: Comparator<T>,
-    isInSourceOrder: boolean,
+    order: Ordering,
     limit?: number,
     name: string = '',
   ) {
@@ -236,7 +241,7 @@ export class PersistentTreeView<T> extends AbstractTreeView<T> {
       stream,
       comparator,
       new PersistentTreap(comparator),
-      isInSourceOrder,
+      order,
       limit,
       name,
     );
@@ -248,8 +253,10 @@ export class MutableTreeView<T> extends AbstractTreeView<T> {
     materialite: Materialite,
     stream: DifferenceStream<T>,
     comparator: Comparator<T>,
-    isInSourceOrder: boolean,
-    limit?: number,
+    // TODO: type `ordering` so it has a relationship
+    // to `Commparator`
+    order: Ordering | undefined,
+    limit?: number | undefined,
     name: string = '',
   ) {
     super(
@@ -257,7 +264,7 @@ export class MutableTreeView<T> extends AbstractTreeView<T> {
       stream,
       comparator,
       new Treap(comparator),
-      isInSourceOrder,
+      order,
       limit,
       name,
     );
