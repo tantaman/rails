@@ -54,6 +54,7 @@ export const agg: {
     alias: Alias,
   ): Sum<Field, Alias>;
 
+  count(): Count<'id', 'count'>;
   count<Field extends string>(field: Field): Count<Field, Field>;
   count<Field extends string, Alias extends string>(
     field: Field,
@@ -106,13 +107,13 @@ export const agg: {
   },
 
   count<Field extends string, Alias extends string>(
-    field: Field,
+    field?: Field | undefined,
     alias?: Alias | undefined,
   ): Count<Field, Alias> {
     return {
       aggregate: 'count',
-      field,
-      alias: alias ?? (field as unknown as Alias),
+      field: field ?? ('id' as unknown as Field),
+      alias: (alias ?? field ?? 'count') as unknown as Alias,
     };
   },
 

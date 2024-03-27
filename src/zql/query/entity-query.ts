@@ -102,12 +102,6 @@ export class EntityQuery<S extends EntitySchema, Return = []> {
       | Aggregate<AsString<keyof S['fields']>, string>
     )[],
   >(...x: Fields) {
-    // TODO: we should drop the explicit `count` API and use `agg.count` instead
-    if (this.#ast.select === 'count') {
-      throw new Misuse(
-        'A query can either return fields or a count, not both.',
-      );
-    }
     const select = new Set(this.#ast.select);
     const aggregate: Aggregation[] = [];
     for (const more of x) {
@@ -201,18 +195,6 @@ export class EntityQuery<S extends EntitySchema, Return = []> {
     return new EntityQuery<S, Return>(this.#context, this.#name, {
       ...this.#ast,
       orderBy: [x, 'desc'],
-    });
-  }
-
-  count() {
-    if (this.#ast.select !== undefined) {
-      throw new Misuse(
-        'Selection set already set. Will not change to a count query.',
-      );
-    }
-    return new EntityQuery<S, number>(this.#context, this.#name, {
-      ...this.#ast,
-      select: 'count',
     });
   }
 
