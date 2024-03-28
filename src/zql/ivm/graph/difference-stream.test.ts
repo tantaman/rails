@@ -3,10 +3,13 @@ import {DifferenceStream} from './difference-stream.js';
 import {Multiset} from '../multiset.js';
 import {Materialite} from '../materialite.js';
 
+type Elem = {x: number};
 test('map', () => {
-  const s = new DifferenceStream<number>();
+  const s = new DifferenceStream<Elem>();
   let expectRan = 0;
-  s.map(x => x * 2).effect(x => {
+  s.map(x => ({
+    x: x.x * 2,
+  })).effect(x => {
     expectRan++;
     expect(x).toBe(4);
   });
@@ -14,9 +17,9 @@ test('map', () => {
   s.queueData([
     1,
     new Multiset([
-      [2, 1],
-      [2, 1],
-      [2, 1],
+      [{x: 2}, 1],
+      [{x: 2}, 1],
+      [{x: 2}, 1],
     ]),
   ]);
   s.notify(1);
@@ -26,9 +29,9 @@ test('map', () => {
 });
 
 test('filter', () => {
-  const s = new DifferenceStream<number>();
+  const s = new DifferenceStream<Elem>();
   let expectRan = 0;
-  s.filter(x => x % 2 === 0).effect(x => {
+  s.filter(x => x.x % 2 === 0).effect(x => {
     expectRan++;
     expect(x).toBe(2);
   });
@@ -36,9 +39,9 @@ test('filter', () => {
   s.queueData([
     1,
     new Multiset([
-      [1, 1],
-      [2, 1],
-      [3, 1],
+      [{x: 1}, 1],
+      [{x: 2}, 1],
+      [{x: 3}, 1],
     ]),
   ]);
   s.notify(1);
@@ -47,21 +50,21 @@ test('filter', () => {
   expect(expectRan).toBe(1);
 });
 
-test('linearCount', () => {
-  const s = new DifferenceStream<number>();
+test('count', () => {
+  const s = new DifferenceStream<Elem>();
   let expectRan = 0;
   let expectedCount = 3;
-  s.linearCount().effect(x => {
+  s.count('count').effect(x => {
     expectRan++;
-    expect(x).toBe(expectedCount);
+    expect(x.count).toBe(expectedCount);
   });
 
   s.queueData([
     1,
     new Multiset([
-      [1, 1],
-      [2, 1],
-      [3, 1],
+      [{x: 1}, 1],
+      [{x: 2}, 1],
+      [{x: 3}, 1],
     ]),
   ]);
   s.notify(1);
@@ -72,10 +75,10 @@ test('linearCount', () => {
   s.queueData([
     2,
     new Multiset([
-      [1, 1],
-      [2, 1],
-      [3, 1],
-      [3, 1],
+      [{x: 1}, 1],
+      [{x: 2}, 1],
+      [{x: 3}, 1],
+      [{x: 3}, 1],
     ]),
   ]);
   expectedCount = 7;
@@ -86,18 +89,20 @@ test('linearCount', () => {
 });
 
 test('map, filter, linearCount', () => {
-  const s = new DifferenceStream<number>();
+  const s = new DifferenceStream<Elem>();
   let expectRan = 0;
   let expectedCount = 1;
-  s.map(x => x * 2)
-    .filter(x => x % 2 === 0)
-    .linearCount()
+  s.map(x => ({
+    x: x.x * 2,
+  }))
+    .filter(x => x.x % 2 === 0)
+    .count('count')
     .effect(x => {
       expectRan++;
-      expect(x).toBe(expectedCount);
+      expect(x.count).toBe(expectedCount);
     });
 
-  s.queueData([1, new Multiset([[1, 1]])]);
+  s.queueData([1, new Multiset([[{x: 1}, 1]])]);
   s.notify(1);
   s.notifyCommitted(1);
 
@@ -106,8 +111,8 @@ test('map, filter, linearCount', () => {
   s.queueData([
     2,
     new Multiset([
-      [1, 1],
-      [2, 1],
+      [{x: 1}, 1],
+      [{x: 2}, 1],
     ]),
   ]);
   expectedCount = 3;
@@ -119,7 +124,7 @@ test('map, filter, linearCount', () => {
 
 test('cleaning up the only user of a stream cleans up the entire pipeline', () => {
   const materialite = new Materialite();
-  const set = materialite.newSetSource<number>((l, r) => l - r);
+  const set = materialite.newSetSource<Elem>((l, r) => l.x - r.x);
 
   let notifyCount = 0;
   const final = set.stream
@@ -127,10 +132,10 @@ test('cleaning up the only user of a stream cleans up the entire pipeline', () =
     .effect(_ => notifyCount++)
     .effect(_ => notifyCount++);
 
-  set.add(1);
+  set.add({x: 1});
   expect(notifyCount).toBe(3);
   final.destroy();
-  set.add(2);
+  set.add({x: 2});
   // stream was cleaned up, all the way to the root
   // so no more notifications.
   expect(notifyCount).toBe(3);
@@ -138,7 +143,7 @@ test('cleaning up the only user of a stream cleans up the entire pipeline', () =
 
 test('cleaning up the only user of a stream cleans up the entire pipeline but stops at a used fork', () => {
   const materialite = new Materialite();
-  const set = materialite.newSetSource<number>((l, r) => l - r);
+  const set = materialite.newSetSource<Elem>((l, r) => l.x - r.x);
 
   let notifyCount = 0;
   const stream1 = set.stream.effect(_ => notifyCount++);
@@ -151,14 +156,14 @@ test('cleaning up the only user of a stream cleans up the entire pipeline but st
   stream2   stream3
   */
 
-  set.add(1);
+  set.add({x: 1});
   expect(notifyCount).toBe(3);
   stream3.destroy();
-  set.add(2);
+  set.add({x: 2});
   // stream was cleaned up to fork, so still 2 notification
   expect(notifyCount).toBe(5);
   stream2.destroy();
-  set.add(3);
+  set.add({x: 3});
   // stream was cleaned up, all the way to the root
   // so no more notifications.
   expect(notifyCount).toBe(5);
