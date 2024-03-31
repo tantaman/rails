@@ -22,10 +22,12 @@ export function makeTestContext(): Context {
     if (!sources.has(name)) {
       sources.set(
         name,
-        materialite.newSetSource<T>((l, r) => l.id.localeCompare(r.id)),
+        materialite.newSetSource<T>((l, r) =>
+          l.id.localeCompare(r.id),
+        ) as unknown as Source<object>,
       );
     }
-    return sources.get(name)! as Source<T>;
+    return sources.get(name)! as unknown as Source<T>;
   };
   return {materialite, getSource};
 }
