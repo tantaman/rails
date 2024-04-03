@@ -4,6 +4,7 @@ export type Fields = {
   [key: string]: unknown;
 };
 
-export interface EntitySchema {
+export interface EntitySchema<Table extends string> {
+  readonly table: Table;
   readonly fields: Fields;
 }

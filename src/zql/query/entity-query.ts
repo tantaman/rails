@@ -13,11 +13,11 @@ import {AggArray, Aggregate, Count, isAggregate} from './agg.js';
 import {Statement} from './statement.js';
 
 type FieldValue<
-  S extends EntitySchema,
+  S extends EntitySchema<string>,
   K extends Selectable<S>,
 > = S['fields'][K] extends Primitive | undefined ? S['fields'][K] : never;
 
-type AggregateValue<S extends EntitySchema, K extends Aggregable<S>> =
+type AggregateValue<S extends EntitySchema<string>, K extends Aggregable<S>> =
   K extends Count<string>
     ? number
     : K extends AggArray<string, string>
@@ -27,15 +27,15 @@ type AggregateValue<S extends EntitySchema, K extends Aggregable<S>> =
         : never;
 
 export type SelectedFields<
-  S extends EntitySchema,
-  Fields extends Selectable<EntitySchema>[],
+  S extends EntitySchema<string>,
+  Fields extends Selectable<EntitySchema<string>>[],
 > = Pick<
   S['fields'],
   Fields[number] extends keyof S['fields'] ? Fields[number] : never
 >;
 
 type SelectedAggregates<
-  S extends EntitySchema,
+  S extends EntitySchema<string>,
   Aggregates extends Aggregable<S>[],
 > = {
   [K in Aggregates[number]['alias']]: AggregateValue<
@@ -46,22 +46,22 @@ type SelectedAggregates<
 
 type AsString<T> = T extends string ? T : never;
 
-export type Selectable<S extends EntitySchema> =
+export type Selectable<S extends EntitySchema<string>> =
   | AsString<keyof S['fields']>
   | 'id';
 
-type Aggregable<S extends EntitySchema> = Aggregate<
+type Aggregable<S extends EntitySchema<string>> = Aggregate<
   AsString<keyof S['fields']>,
   string
 >;
 
-type ToSelectableOnly<T, S extends EntitySchema> = T extends (infer U)[]
+type ToSelectableOnly<T, S extends EntitySchema<string>> = T extends (infer U)[]
   ? U extends Selectable<S>
     ? U[]
     : never
   : never;
 
-type ToAggregableOnly<T, S extends EntitySchema> = T extends (infer U)[]
+type ToAggregableOnly<T, S extends EntitySchema<string>> = T extends (infer U)[]
   ? U extends Aggregable<S>
     ? U[]
     : never
@@ -81,14 +81,17 @@ export type MakeHumanReadable<T> = {} & {
 
 let aliasCount = 0;
 
-type WhereExpression<S extends EntitySchema> =
+type WhereExpression<S extends EntitySchema<string>> =
   | {
       op: 'AND' | 'OR';
       conditions: WhereExpression<S>[];
     }
   | SimpleExpression<S, Selectable<S>>;
 
-type SimpleExpression<S extends EntitySchema, F extends Selectable<S>> = {
+type SimpleExpression<
+  S extends EntitySchema<string>,
+  F extends Selectable<S>,
+> = {
   op: SimpleOperator;
   field: F;
   value: {
@@ -97,12 +100,16 @@ type SimpleExpression<S extends EntitySchema, F extends Selectable<S>> = {
   };
 };
 
-export class EntityQuery<S extends EntitySchema, Return = []> {
+export class EntityQuery<S extends EntitySchema<string>, Return = []> {
   readonly #ast: AST;
-  readonly #name: string;
+  readonly #name: S extends EntitySchema<infer TableName> ? TableName : never;
   readonly #context: Context;
 
-  constructor(context: Context, tableName: string, ast?: AST) {
+  constructor(
+    context: Context,
+    tableName: S extends EntitySchema<infer TableName> ? TableName : never,
+    ast?: AST,
+  ) {
     this.#ast = ast ?? {
       table: tableName,
       alias: aliasCount++,
@@ -228,19 +235,19 @@ export function astForTesting(q: WeakKey): AST {
 
 type ArrayOfAtLeastTwo<T> = [T, T, ...T[]];
 
-export function or<S extends EntitySchema>(
+export function or<S extends EntitySchema<string>>(
   ...conditions: ArrayOfAtLeastTwo<WhereExpression<S>>
 ): WhereExpression<S> {
   return flatten('OR', conditions);
 }
 
-export function and<S extends EntitySchema>(
+export function and<S extends EntitySchema<string>>(
   ...conditions: ArrayOfAtLeastTwo<WhereExpression<S>>
 ): WhereExpression<S> {
   return flatten('AND', conditions);
 }
 
-function flatten<S extends EntitySchema>(
+function flatten<S extends EntitySchema<string>>(
   op: 'AND' | 'OR',
   conditions: WhereExpression<S>[],
 ): WhereExpression<S> {
@@ -256,11 +263,10 @@ function flatten<S extends EntitySchema>(
   return {op, conditions: flattened};
 }
 
-export function expression<S extends EntitySchema, K extends Selectable<S>>(
-  field: K,
-  op: SimpleOperator,
-  value: FieldValue<S, K>,
-): WhereExpression<S> {
+export function expression<
+  S extends EntitySchema<string>,
+  K extends Selectable<S>,
+>(field: K, op: SimpleOperator, value: FieldValue<S, K>): WhereExpression<S> {
   return {
     op,
     field,
