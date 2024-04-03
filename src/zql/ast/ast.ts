@@ -16,6 +16,12 @@ export type Aggregation = {
   readonly alias: string;
   readonly aggregate: Aggregate;
 };
+export type Join = {
+  readonly query: AST;
+  readonly as: string;
+  readonly on: [string, string];
+  // readonly on: Condition;
+};
 
 // type Ref = `${string}.${string}`;
 
@@ -34,11 +40,7 @@ export type AST = {
   //   readonly query: AST;
   // }[];
   readonly where?: Condition | undefined;
-  // readonly joins?: {
-  //   readonly table: string;
-  //   readonly as: string;
-  //   readonly on: ConditionList;
-  // }[];
+  readonly joins?: Join[];
   readonly limit?: number | undefined;
   readonly groupBy?: string[];
   readonly orderBy: Ordering;

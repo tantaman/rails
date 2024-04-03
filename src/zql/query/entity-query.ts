@@ -2,6 +2,7 @@ import {
   AST,
   Aggregation,
   Condition,
+  Join,
   Primitive,
   SimpleOperator,
 } from '../ast/ast.js';
@@ -186,6 +187,35 @@ export class EntityQuery<S extends EntitySchema<string>, Return = []> {
     return new EntityQuery<S, Return>(this.#context, this.#name, {
       ...this.#ast,
       where: cond as Condition,
+    });
+  }
+
+  join<Other extends EntitySchema, Alias extends string>(
+    other: EntityQuery<Other>,
+    thisField: keyof S['fields'],
+    otherField: keyof Other['fields'],
+    // TODO: make alias optional but then `table`
+    // needs to prefix fields
+    alias: Alias,
+  ) {
+    const join: Join = {
+      query: other.#ast,
+      as: alias ?? other.#name,
+      on: [thisField as string, otherField as string],
+    };
+
+    return new EntityQuery<
+      {
+        fields: S['fields'] & {
+          [Key in `${Alias}.${string & keyof Other['fields']}`]: Other['fields'][Key extends `${Alias}.${infer Rest}`
+            ? Rest
+            : never];
+        };
+      },
+      Return
+    >(this.#context, this.#name, {
+      ...this.#ast,
+      joins: [...(this.#ast.joins ?? []), join],
     });
   }
 

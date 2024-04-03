@@ -115,6 +115,25 @@ test('query types', () => {
       or(expression('id2', '=', 'a'), expression('str', '=', 'b')),
     ),
   );
+  // expectTypeOf(
+  //   q
+  //     .join(q, 'id', 'id', 't2')
+  //     .select('t2.id', 't2.optStr', 't2.str', 'id', 'optStr', 'str')
+  //     .prepare()
+  //     .exec(),
+  // ).toMatchTypeOf<
+  //   Promise<
+  //     readonly {
+  //       e1: {id: string; optStr?: string; str: string};
+  //       t2: {id: string; optStr?: string; str: string};
+  //     }[]
+  //   >
+  // >();
+
+  /*
+  Alternative:
+  const q2 = q.nest(q, 'children', 'parent_id', 'id');
+  */
 });
 
 const e1 = z.object({
