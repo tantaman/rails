@@ -377,7 +377,11 @@ describe('OR', () => {
 
       const ast: AST = {
         table: 'items',
-        select: ['id', 'a', 'b'],
+        select: [
+          ['id', 'id'],
+          ['a', 'a'],
+          ['b', 'b'],
+        ],
         where: c.where as Condition,
         orderBy: [['id'], 'asc'],
       };

@@ -113,7 +113,7 @@ export class EntityQuery<S extends EntitySchema, Return = []> {
     const aggregate: Aggregation[] = [];
     for (const more of x) {
       if (!isAggregate(more)) {
-        select.add(more);
+        select.add([more, more]);
         continue;
       }
       aggregate.push(more);
