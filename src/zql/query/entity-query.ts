@@ -18,6 +18,10 @@ type FieldValue<S extends EntitySchema, K extends Selectable<S>> = S[K] extends
   ? S[K]
   : never;
 
+type FromSet = {
+  [tableOrAlias: string]: EntitySchema;
+};
+
 type AggregateValue<S extends EntitySchema, K extends Aggregable<S>> =
   K extends Count<string>
     ? number
@@ -43,6 +47,19 @@ type SelectedAggregates<
 };
 
 type AsString<T> = T extends string ? T : never;
+type NestedKeys<T> = {
+  [K in keyof T]: keyof T[K];
+}[keyof T];
+
+type Selector<F extends FromSet> =
+  | {
+      [K in keyof F]:
+        | `${string & K}.${string & keyof F[K]}`
+        | `${string & K}.*`
+        | [`${string & K}.${string & keyof F[K]}`, string]
+        | Exclude<string & keyof F[K], NestedKeys<Omit<F, K>>>;
+    }[keyof F]
+  | {[K in keyof F]: `${string & K}.${string & keyof F[K]}`}[keyof F];
 
 export type Selectable<S extends EntitySchema> = AsString<keyof S> | 'id';
 
@@ -90,7 +107,7 @@ type SimpleCondition<S extends EntitySchema> = {
   };
 };
 
-export class EntityQuery<S extends EntitySchema, Return = []> {
+export class EntityQuery<F extends FromSet, Return = []> {
   readonly #ast: AST;
   readonly #name: string;
   readonly #context: Context;
@@ -108,7 +125,7 @@ export class EntityQuery<S extends EntitySchema, Return = []> {
     astWeakMap.set(this, this.#ast);
   }
 
-  select<Fields extends (Selectable<S> | Aggregable<S>)[]>(...x: Fields) {
+  select<Fields extends Selector<F>[]>(...x: Fields) {
     const select = new Set(this.#ast.select);
     const aggregate: Aggregation[] = [];
     for (const more of x) {
