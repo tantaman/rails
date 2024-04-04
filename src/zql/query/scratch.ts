@@ -114,13 +114,10 @@ type User = {
 };
 
 const q: EntityQuery<{issue: Issue}> = {} as any;
-q.select(['issue.id', 'issue_id'] as const, 'issue.prio');
-q.select('issue.*');
-q.select('issue.ownerId');
-
 const q2: EntityQuery<{user: User}> = {} as any;
-const q3 = q.join(q2.select('user.*'), 'user', 'issue.ownerId', 'user.id');
-q3.select('issue.title', 'user.email');
+const q3 = q.join(q2.select('user.*'), 'owner', 'issue.ownerId', 'owner.id');
+q3.select('issue.title', 'owner.email');
+
 // q3.select('user.id')
 // const q3 = q.join(q2.select('user.name'), 'user', 'issue.ownerId', 'user.id');
 // q3.select('');
