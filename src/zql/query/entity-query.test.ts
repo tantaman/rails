@@ -29,7 +29,7 @@ test('query types', () => {
     [sym]: boolean;
   };
 
-  const q = new EntityQuery<{fields: E1}>(context, 'e1');
+  const q = new EntityQuery<E1>(context, 'e1');
 
   // @ts-expect-error - selecting fields that do not exist in the schema is a type error
   q.select('does-not-exist');
@@ -138,7 +138,7 @@ const dummyObject: E1 = {
 };
 describe('ast', () => {
   test('select', () => {
-    const q = new EntityQuery<{fields: E1}>(context, 'e1');
+    const q = new EntityQuery<E1>(context, 'e1');
 
     // each individual field is selectable on its own
     Object.keys(dummyObject).forEach(k => {
@@ -169,7 +169,7 @@ describe('ast', () => {
   });
 
   test('where', () => {
-    let q = new EntityQuery<{fields: E1}>(context, 'e1');
+    let q = new EntityQuery<E1>(context, 'e1');
 
     // where is applied
     q = q.where('id', '=', 'a');
@@ -254,7 +254,7 @@ describe('ast', () => {
   });
 
   test('limit', () => {
-    const q = new EntityQuery<{fields: E1}>(context, 'e1');
+    const q = new EntityQuery<E1>(context, 'e1');
     expect(ast(q.limit(10))).toEqual({
       orderBy: [['id'], 'asc'],
       table: 'e1',
@@ -263,7 +263,7 @@ describe('ast', () => {
   });
 
   test('asc/desc', () => {
-    const q = new EntityQuery<{fields: E1}>(context, 'e1');
+    const q = new EntityQuery<E1>(context, 'e1');
 
     // order methods update the ast
     expect(ast(q.asc('id'))).toEqual({
@@ -281,7 +281,7 @@ describe('ast', () => {
   });
 
   test('independent of method call order', () => {
-    const base = new EntityQuery<{fields: E1}>(context, 'e1');
+    const base = new EntityQuery<E1>(context, 'e1');
 
     const calls = {
       select(q: typeof base) {
@@ -320,7 +320,7 @@ describe('ast', () => {
   });
 
   test('or', () => {
-    const q = new EntityQuery<{fields: E1}>(context, 'e1');
+    const q = new EntityQuery<E1>(context, 'e1');
 
     expect(
       ast(q.where(or(expression('a', '=', 123), expression('c', '=', 'abc')))),
@@ -365,9 +365,7 @@ describe('ast', () => {
   });
 
   test('flatten ands', () => {
-    type S = {
-      fields: {id: string; a: number; b: string; c: boolean; d: string};
-    };
+    type S = {id: string; a: number; b: string; c: boolean; d: string};
 
     expect(
       and<S>(
@@ -430,9 +428,7 @@ describe('ast', () => {
   });
 
   test('flatten ors', () => {
-    type S = {
-      fields: {id: string; a: number; b: string; c: boolean; d: string};
-    };
+    type S = {id: string; a: number; b: string; c: boolean; d: string};
 
     expect(
       or<S>(
@@ -451,7 +447,7 @@ describe('ast', () => {
   });
 
   test('consecutive wheres/ands should be merged', () => {
-    const q = new EntityQuery<{fields: E1}>(context, 'e1');
+    const q = new EntityQuery<E1>(context, 'e1');
 
     expect(
       ast(
@@ -586,7 +582,7 @@ describe('ast', () => {
   });
 
   test('consecutive ors', () => {
-    const q = new EntityQuery<{fields: E1}>(context, 'e1');
+    const q = new EntityQuery<E1>(context, 'e1');
 
     expect(
       ast(q.where(or(expression('a', '=', 123), expression('a', '=', 456))))
@@ -691,7 +687,7 @@ describe('NOT', () => {
 
     for (const c of cases) {
       test(`${c.in} -> ${c.out}`, () => {
-        const q = new EntityQuery<{fields: E1}>(context, 'e1');
+        const q = new EntityQuery<E1>(context, 'e1');
         expect(ast(q.where(not(expression('a', c.in, 1)))).where).toEqual({
           op: c.out,
           field: 'a',
@@ -703,7 +699,7 @@ describe('NOT', () => {
 });
 
 describe("De Morgan's Law", () => {
-  type S = {fields: E1};
+  type S = E1;
 
   const cases: {
     condition: WhereCondition<S>;

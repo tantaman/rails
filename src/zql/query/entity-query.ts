@@ -12,27 +12,25 @@ import {EntitySchema} from '../schema/entity-schema.js';
 import {AggArray, Aggregate, Count, isAggregate} from './agg.js';
 import {Statement} from './statement.js';
 
-type FieldValue<
-  S extends EntitySchema,
-  K extends Selectable<S>,
-> = S['fields'][K] extends Primitive | undefined ? S['fields'][K] : never;
+type FieldValue<S extends EntitySchema, K extends Selectable<S>> = S[K] extends
+  | Primitive
+  | undefined
+  ? S[K]
+  : never;
 
 type AggregateValue<S extends EntitySchema, K extends Aggregable<S>> =
   K extends Count<string>
     ? number
     : K extends AggArray<string, string>
-      ? S['fields'][K['field']][]
+      ? S[K['field']][]
       : K extends Exclude<Aggregable<S>, Count<string>>
-        ? S['fields'][K['field']]
+        ? S[K['field']]
         : never;
 
 export type SelectedFields<
   S extends EntitySchema,
   Fields extends Selectable<EntitySchema>[],
-> = Pick<
-  S['fields'],
-  Fields[number] extends keyof S['fields'] ? Fields[number] : never
->;
+> = Pick<S, Fields[number] extends keyof S ? Fields[number] : never>;
 
 type SelectedAggregates<
   S extends EntitySchema,
@@ -46,14 +44,9 @@ type SelectedAggregates<
 
 type AsString<T> = T extends string ? T : never;
 
-export type Selectable<S extends EntitySchema> =
-  | AsString<keyof S['fields']>
-  | 'id';
+export type Selectable<S extends EntitySchema> = AsString<keyof S> | 'id';
 
-type Aggregable<S extends EntitySchema> = Aggregate<
-  AsString<keyof S['fields']>,
-  string
->;
+type Aggregable<S extends EntitySchema> = Aggregate<AsString<keyof S>, string>;
 
 type ToSelectableOnly<T, S extends EntitySchema> = T extends (infer U)[]
   ? U extends Selectable<S>
