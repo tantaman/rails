@@ -8,10 +8,19 @@ type FromSet = {
   [table: string]: Schema;
 };
 
-type Selector<T extends keyof F, F extends FromSet> =
-  | `${string & keyof F}.${string & keyof F[T]}`
-  | `${string & keyof F}.*`
-  | [`${string & keyof F}.${string & keyof F[T]}`, string];
+// type Selector<T extends keyof F, F extends FromSet> =
+//   | `${string & keyof F}.${string & keyof F[T]}`
+//   | `${string & keyof F}.*`
+//   | [`${string & keyof F}.${string & keyof F[T]}`, string];
+
+type Selector<F extends FromSet> =
+  | {
+      [K in keyof F]:
+        | `${string & K}.${string & keyof F[K]}`
+        | `${string & K}.*`
+        | [`${string & K}.${string & keyof F[K]}`, string];
+    }[keyof F]
+  | {[K in keyof F]: `${string & K}.${string & keyof F[K]}`}[keyof F];
 
 type SimpleSelector<
   T extends keyof F,
@@ -20,10 +29,10 @@ type SimpleSelector<
 
 type AsString<T> = T extends string ? T : never;
 
-type ExtractFieldType<
-  F extends FromSet,
-  S extends Selector<keyof F, F>,
-> = S extends [`${infer T}.${infer K}`, infer Alias]
+type ExtractFieldType<F extends FromSet, S extends Selector<F>> = S extends [
+  `${infer T}.${infer K}`,
+  infer Alias,
+]
   ? T extends keyof F
     ? K extends keyof F[T]
       ? {[P in AsString<Alias>]: F[T][K]}
@@ -43,16 +52,16 @@ type ExtractFieldType<
 
 type CombineSelections<
   F extends FromSet,
-  Selections extends Selector<keyof F, F>[],
+  Selections extends Selector<F>[],
 > = Selections extends [infer First, ...infer Rest]
-  ? First extends Selector<keyof F, F>
-    ? CombineSelections<F, Rest extends Selector<keyof F, F>[] ? Rest : []> &
+  ? First extends Selector<F>
+    ? CombineSelections<F, Rest extends Selector<F>[] ? Rest : []> &
         ExtractFieldType<F, First>
     : never
   : unknown;
 
 interface EntityQuery<F extends FromSet, Result = []> {
-  select<T extends keyof F, S extends Selector<T, F>[]>(
+  select<S extends Selector<F>[]>(
     ...fields: S
   ): EntityQuery<F, CombineSelections<F, S>[]>;
 
@@ -111,7 +120,7 @@ q.select('issue.ownerId');
 
 const q2: EntityQuery<{user: User}> = {} as any;
 const q3 = q.join(q2.select('user.*'), 'user', 'issue.ownerId', 'user.id');
-q3.select('');
+q3.select('issue.title', 'user.email');
 // q3.select('user.id')
 // const q3 = q.join(q2.select('user.name'), 'user', 'issue.ownerId', 'user.id');
 // q3.select('');
