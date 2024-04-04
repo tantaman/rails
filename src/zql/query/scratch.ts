@@ -1,27 +1,22 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 type Schema = {
-  table: string;
-  fields: {
-    [key: string]: unknown;
-  };
+  [key: string]: unknown;
 };
 
 type FromSet = {
   [table: string]: Schema;
 };
 
-type ToFromSet<S extends Schema> = {
-  [Key in S['table']]: S;
-};
-
-// type SelectedFields<
-//   F extends FromSet,
-//   Fields extends [],
-// > = ;
-
 type Selector<T extends keyof F, F extends FromSet> =
-  | `${string & keyof F}.${string & keyof F[T]['fields']}`
+  | `${string & keyof F}.${string & keyof F[T]}`
   | `${string & keyof F}.*`
-  | [`${string & keyof F}.${string & keyof F[T]['fields']}`, string];
+  | [`${string & keyof F}.${string & keyof F[T]}`, string];
+
+type SimpleSelector<
+  T extends keyof F,
+  F extends FromSet,
+> = `${string & keyof F}.${string & keyof F[T]}`;
 
 type AsString<T> = T extends string ? T : never;
 
@@ -30,18 +25,18 @@ type ExtractFieldType<
   S extends Selector<keyof F, F>,
 > = S extends [`${infer T}.${infer K}`, infer Alias]
   ? T extends keyof F
-    ? K extends keyof F[T]['fields']
-      ? {[P in AsString<Alias>]: F[T]['fields'][K]}
+    ? K extends keyof F[T]
+      ? {[P in AsString<Alias>]: F[T][K]}
       : never
     : never
   : S extends `${infer T}.*`
     ? T extends keyof F
-      ? F[T]['fields']
+      ? F[T]
       : never
     : S extends `${infer T}.${infer K}`
       ? T extends keyof F
-        ? K extends keyof F[T]['fields']
-          ? {[P in K]: F[T]['fields'][K]}
+        ? K extends keyof F[T]
+          ? {[P in K]: F[T][K]}
           : never
         : never
       : never;
@@ -56,32 +51,74 @@ type CombineSelections<
     : never
   : unknown;
 
-interface EntityQuery<F extends FromSet, R = []> {
-  // select<T extends keyof F>(field: [keyof F, keyof F[T]['fields']]): void;
+interface EntityQuery<F extends FromSet, Result = []> {
   select<T extends keyof F, S extends Selector<T, F>[]>(
-    ...field: S
+    ...fields: S
   ): EntityQuery<F, CombineSelections<F, S>[]>;
 
+  exec(): Result;
+
   // joins `other` based on applied select since applied select moves stuff up.
-  join<FOther extends FromSet, ROther>(
-    other: EntityQuery<FOther, ROther>,
-  ): void;
+  // join<Other extends EntityQuery<FromSet, unknown>, Alias extends string>(
+  //   other: Other,
+  //   alias: Alias,
+  //   thisField: SimpleSelector<keyof F, F>,
+  //   otherField: SimpleSelector<
+  //     Other extends EntityQuery<infer OtherFrom, unknown>
+  //       ? keyof OtherFrom
+  //       : never,
+  //     Other extends EntityQuery<infer OtherFrom, unknown> ? OtherFrom : never
+  //   >,
+  // ): EntityQuery<
+  //   F & {
+  //     [k in Alias]: Other extends EntityQuery<FromSet, infer OtherReturn>
+  //       ? OtherReturn extends Array<infer E>
+  //         ? E
+  //         : never
+  //       : never;
+  //   },
+  //   Result
+  // >;
+
+  join<OtherReturn extends {[key: string]: unknown}, Alias extends string>(
+    other: EntityQuery<FromSet, Array<OtherReturn>>,
+    alias: Alias,
+    thisField: SimpleSelector<keyof F, F>,
+    otherField: `${Alias}.${string & keyof OtherReturn}`,
+  ): EntityQuery<F & {[K in Alias]: OtherReturn}, Result>;
+
+  // & {[K in Alias]: {fields: OtherReturn}}
 }
 
-type E = {
-  table: 'issue';
-  fields: {
-    id: string;
-    title: string;
-    prio: number;
-  };
+type Issue = {
+  id: string;
+  title: string;
+  prio: number;
+  ownerId: string;
 };
 
-const q: EntityQuery<ToFromSet<E>>;
+type User = {
+  id: string;
+  name: string;
+  email: string;
+  title: string;
+};
+
+const q: EntityQuery<{issue: Issue}> = {} as any;
 q.select(['issue.id', 'issue_id'] as const, 'issue.prio');
 q.select('issue.*');
+q.select('issue.ownerId');
 
-// function foo<S extends Schema>(k: keyof S['fields']) {
+const q2: EntityQuery<{user: User}> = {} as any;
+const q3 = q.join(q2.select('user.*'), 'user', 'issue.ownerId', 'user.id');
+q3.select('');
+// q3.select('user.id')
+// const q3 = q.join(q2.select('user.name'), 'user', 'issue.ownerId', 'user.id');
+// q3.select('');
+
+console.log(q);
+
+// function foo<S extends Schema>(k: keyof S) {
 //   return {[k]: null};
 // }
 
@@ -89,7 +126,7 @@ q.select('issue.*');
 
 // function baz<F extends FromSet, T extends keyof F>(
 //   t: keyof F,
-//   f: keyof F[T]['fields'],
+//   f: keyof F[T],
 // ) {}
 
 // foo<E>('ix');
