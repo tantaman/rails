@@ -46,28 +46,30 @@ type ExtractAggregatePiece<From extends FromSet, K extends Aggregator<From>> =
       ? {[K in Alias]: number}
       : never;
 
-type ExtractFieldPiece<F extends FromSet, S extends Selector<F>> = S extends [
-  `${infer T}.${infer K}`,
-  infer Alias,
-]
-  ? T extends keyof F
-    ? K extends keyof F[T]
-      ? {[P in AsString<Alias>]: F[T][K]}
-      : never
-    : never
-  : S extends `${infer T}.*`
-    ? T extends keyof F
-      ? F[T]
-      : never
-    : S extends `${infer T}.${infer K}`
-      ? T extends keyof F
-        ? K extends keyof F[T]
-          ? {[P in K]: F[T][K]}
-          : never
+type ExtractFieldPiece<From extends FromSet, Selection extends Selector<From>> =
+  // ['table.column', 'alias']
+  Selection extends [`${infer Table}.${infer Column}`, infer Alias]
+    ? Table extends keyof From
+      ? Column extends keyof From[Table]
+        ? {[P in AsString<Alias>]: From[Table][Column]}
         : never
-      : S extends string
-        ? {[P in S]: ExtractNestedTypeByName<F, S>}
-        : never;
+      : never
+    : // 'table.*'
+      Selection extends `${infer Table}.*`
+      ? Table extends keyof From
+        ? From[Table]
+        : never
+      : // 'table.column'
+        Selection extends `${infer Table}.${infer Column}`
+        ? Table extends keyof From
+          ? Column extends keyof From[Table]
+            ? {[P in Column]: From[Table][Column]}
+            : never
+          : never
+        : // 'column'
+          Selection extends string
+          ? {[P in Selection]: ExtractNestedTypeByName<From, Selection>}
+          : never;
 
 type ExtractNestedTypeByName<T, S extends string> = {
   [K in keyof T]: S extends keyof T[K] ? T[K][S] : never;
