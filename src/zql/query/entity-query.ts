@@ -10,11 +10,6 @@ type FromSet = {
   [tableOrAlias: string]: EntitySchema;
 };
 
-type ExtractAggregatePiece<From extends FromSet, K extends Aggregator<From>> =
-  K extends AggArray<infer S, string>
-    ? ExtractFieldPiece<From, S extends SimpleSelector<From> ? S : never>[]
-    : number;
-
 type AsString<T> = T extends string ? T : never;
 type NestedKeys<T> = {
   [K in keyof T]: keyof T[K];
@@ -38,6 +33,18 @@ type Selector<F extends FromSet> =
         | Exclude<string & keyof F[K], NestedKeys<Omit<F, K>>>;
     }[keyof F]
   | SimpleSelector<F>;
+
+type ExtractAggregatePiece<From extends FromSet, K extends Aggregator<From>> =
+  K extends AggArray<infer S, infer Alias>
+    ? {
+        [K in Alias]: ExtractFieldValue<
+          From,
+          S extends SimpleSelector<From> ? S : never
+        >;
+      }[]
+    : K extends Aggregate<string, infer Alias>
+      ? {[K in Alias]: number}
+      : never;
 
 type ExtractFieldPiece<F extends FromSet, S extends Selector<F>> = S extends [
   `${infer T}.${infer K}`,
@@ -74,10 +81,16 @@ type CombineSelections<
   Selections extends (Selector<F> | Aggregator<F>)[],
 > = Selections extends [infer First, ...infer Rest]
   ? First extends Selector<F>
-    ? CombineSelections<F, Rest extends Selector<F>[] ? Rest : []> &
+    ? CombineSelections<
+        F,
+        Rest extends (Selector<F> | Aggregator<F>)[] ? Rest : []
+      > &
         ExtractFieldPiece<F, First>
     : First extends Aggregator<F>
-      ? CombineSelections<F, Rest extends Selector<F>[] ? Rest : []> &
+      ? CombineSelections<
+          F,
+          Rest extends (Selector<F> | Aggregator<F>)[] ? Rest : []
+        > &
           ExtractAggregatePiece<F, First>
       : never
   : unknown;
@@ -369,7 +382,7 @@ const q: EntityQuery<{
 
 import * as agg from './agg.js';
 const f = q
-  .select('user.name', 'user.id')
+  .select('user.name', 'user.id', agg.count())
   .where('name', '!=', '')
   .prepare()
   .exec();
