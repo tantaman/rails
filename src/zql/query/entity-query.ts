@@ -10,9 +10,9 @@ type FromSet = {
   [tableOrAlias: string]: EntitySchema;
 };
 
-type AggregateValue<From extends FromSet, K extends Aggregator<From>> =
+type ExtractAggregatePiece<From extends FromSet, K extends Aggregator<From>> =
   K extends AggArray<infer S, string>
-    ? ExtractFieldType<From, S extends SimpleSelector<From> ? S : never>[]
+    ? ExtractFieldPiece<From, S extends SimpleSelector<From> ? S : never>[]
     : number;
 
 type AsString<T> = T extends string ? T : never;
@@ -39,7 +39,7 @@ type Selector<F extends FromSet> =
     }[keyof F]
   | SimpleSelector<F>;
 
-type ExtractFieldType<F extends FromSet, S extends Selector<F>> = S extends [
+type ExtractFieldPiece<F extends FromSet, S extends Selector<F>> = S extends [
   `${infer T}.${infer K}`,
   infer Alias,
 ]
@@ -60,16 +60,25 @@ type ExtractFieldType<F extends FromSet, S extends Selector<F>> = S extends [
         : never
       : never;
 
+type ExtractNestedTypeByName<T, S extends string> = {
+  [K in keyof T]: S extends keyof T[K] ? T[K][S] : never;
+}[keyof T];
+
+type ExtractFieldValue<
+  F extends FromSet,
+  S extends SimpleSelector<F>,
+> = S extends `${infer T}.${infer K}` ? F[T][K] : ExtractNestedTypeByName<F, S>;
+
 type CombineSelections<
   F extends FromSet,
   Selections extends (Selector<F> | Aggregator<F>)[],
 > = Selections extends [infer First, ...infer Rest]
   ? First extends Selector<F>
     ? CombineSelections<F, Rest extends Selector<F>[] ? Rest : []> &
-        ExtractFieldType<F, First>
+        ExtractFieldPiece<F, First>
     : First extends Aggregator<F>
       ? CombineSelections<F, Rest extends Selector<F>[] ? Rest : []> &
-          AggregateValue<F, First>
+          ExtractAggregatePiece<F, First>
       : never
   : unknown;
 
@@ -113,7 +122,7 @@ type SimpleCondition<From extends FromSet> = {
   field: Selector<From>;
   value: {
     type: 'literal';
-    value: ExtractFieldType<From, Selector<From>>;
+    value: ExtractFieldValue<From, SimpleSelector<From>>;
   };
 };
 
@@ -135,7 +144,7 @@ export class EntityQuery<From extends FromSet, Return = []> {
     astWeakMap.set(this, this.#ast);
   }
 
-  select<Fields extends Selector<From>[]>(
+  select<Fields extends (Selector<From> | Aggregator<From>)[]>(
     ...x: Fields
   ): EntityQuery<From, CombineSelections<From, Fields>[]> {
     const select = new Set(this.#ast.select);
@@ -175,12 +184,12 @@ export class EntityQuery<From extends FromSet, Return = []> {
   where<K extends SimpleSelector<From>>(
     field: K,
     op: SimpleOperator,
-    value: ExtractFieldType<From, K>,
+    value: ExtractFieldValue<From, K>,
   ): EntityQuery<From, Return>;
   where<K extends SimpleSelector<From>>(
     exprOrField: K | WhereCondition<From>,
     op?: SimpleOperator,
-    value?: ExtractFieldType<From, K>,
+    value?: ExtractFieldValue<From, K>,
   ): EntityQuery<From, Return> {
     let expr: WhereCondition<From>;
     if (typeof exprOrField === 'string') {
@@ -286,7 +295,7 @@ function flatten<F extends FromSet>(
 export function expression<F extends FromSet, K extends SimpleSelector<F>>(
   field: K,
   op: SimpleOperator,
-  value: ExtractFieldType<F, K>,
+  value: ExtractFieldValue<F, K>,
 ): WhereCondition<F> {
   return {
     op,
@@ -359,4 +368,9 @@ const q: EntityQuery<{
 }> = {} as any;
 
 import * as agg from './agg.js';
-const f = q.select('user.name', 'user.id').prepare().exec();
+const f = q
+  .select('user.name', 'user.id')
+  .where('name', '!=', '')
+  .prepare()
+  .exec();
+// const g = q.select(agg.avg('name')).prepare().exec();

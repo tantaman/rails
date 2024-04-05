@@ -129,7 +129,7 @@ const userQuery = q2.select('user.*');
 
 issueQuery.join(userQuery, 'owner', 'issue.ownerId', 'owner.id').select('');
 
-q3.select('');
+// q3.select('');
 
 console.log(q);
 
