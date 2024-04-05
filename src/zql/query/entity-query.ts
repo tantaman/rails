@@ -65,7 +65,9 @@ type ExtractFieldPiece<F extends FromSet, S extends Selector<F>> = S extends [
           ? {[P in K]: F[T][K]}
           : never
         : never
-      : never;
+      : S extends string
+        ? {[P in S]: ExtractNestedTypeByName<F, S>}
+        : never;
 
 type ExtractNestedTypeByName<T, S extends string> = {
   [K in keyof T]: S extends keyof T[K] ? T[K][S] : never;
@@ -96,18 +98,6 @@ type CombineSelections<
   : unknown;
 
 type Aggregator<From extends FromSet> = Aggregate<SimpleSelector<From>, string>;
-
-// type ToSelectorOnly<T, From extends FromSet> = T extends (infer U)[]
-//   ? U extends Selector<From>
-//     ? U[]
-//     : never
-//   : never;
-
-// type ToAggregatorOnly<T, From extends FromSet> = T extends (infer U)[]
-//   ? U extends Aggregator<From>
-//     ? U[]
-//     : never
-//   : never;
 
 /**
  * Have you ever noticed that when you hover over Types in TypeScript, it shows
@@ -372,18 +362,13 @@ function negateOperator(op: SimpleOperator): SimpleOperator {
   }
 }
 
-const q: EntityQuery<{
-  user: {
-    id: string;
-    name: string;
-  };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-}> = {} as any;
-
-import * as agg from './agg.js';
-const f = q
-  .select('user.name', 'user.id', agg.count())
-  .where('name', '!=', '')
-  .prepare()
-  .exec();
+// const q: EntityQuery<{
+//   user: {
+//     id: string;
+//     name: string;
+//   };
+//   // eslint-disable-next-line @typescript-eslint/no-explicit-any
+// }> = {} as any;
+// import * as agg from './agg.js';
+// const f = q.select('name', 'user.id').where('name', '!=', '').prepare().exec();
 // const g = q.select(agg.avg('name')).prepare().exec();
