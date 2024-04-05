@@ -6,7 +6,7 @@ import {EntitySchema} from '../schema/entity-schema.js';
 import {AggArray, Aggregate, isAggregate} from './agg.js';
 import {Statement} from './statement.js';
 
-type FromSet = {
+export type FromSet = {
   [tableOrAlias: string]: EntitySchema;
 };
 
@@ -40,8 +40,8 @@ type ExtractAggregatePiece<From extends FromSet, K extends Aggregator<From>> =
         [K in Alias]: ExtractFieldValue<
           From,
           S extends SimpleSelector<From> ? S : never
-        >;
-      }[]
+        >[];
+      }
     : K extends Aggregate<string, infer Alias>
       ? {[K in Alias]: number}
       : never;
@@ -81,21 +81,21 @@ type ExtractFieldValue<
 > = S extends `${infer T}.${infer K}` ? F[T][K] : ExtractNestedTypeByName<F, S>;
 
 type CombineSelections<
-  F extends FromSet,
-  Selections extends (Selector<F> | Aggregator<F>)[],
+  From extends FromSet,
+  Selections extends (Selector<From> | Aggregator<From>)[],
 > = Selections extends [infer First, ...infer Rest]
-  ? First extends Selector<F>
+  ? First extends Selector<From>
     ? CombineSelections<
-        F,
-        Rest extends (Selector<F> | Aggregator<F>)[] ? Rest : []
+        From,
+        Rest extends (Selector<From> | Aggregator<From>)[] ? Rest : []
       > &
-        ExtractFieldPiece<F, First>
-    : First extends Aggregator<F>
+        ExtractFieldPiece<From, First>
+    : First extends Aggregator<From>
       ? CombineSelections<
-          F,
-          Rest extends (Selector<F> | Aggregator<F>)[] ? Rest : []
+          From,
+          Rest extends (Selector<From> | Aggregator<From>)[] ? Rest : []
         > &
-          ExtractAggregatePiece<F, First>
+          ExtractAggregatePiece<From, First>
       : never
   : unknown;
 
@@ -368,9 +368,14 @@ function negateOperator(op: SimpleOperator): SimpleOperator {
 //   user: {
 //     id: string;
 //     name: string;
+//     foo: boolean;
 //   };
 //   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 // }> = {} as any;
+
 // import * as agg from './agg.js';
+
+// const x = q.select('user.*', agg.min('foo')).prepare().exec();
+
 // const f = q.select('name', 'user.id').where('name', '!=', '').prepare().exec();
 // const g = q.select(agg.avg('name')).prepare().exec();
