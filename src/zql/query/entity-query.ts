@@ -3,42 +3,17 @@ import {Context} from '../context/context.js';
 import {must} from '../error/asserts.js';
 import {Misuse} from '../error/misuse.js';
 import {EntitySchema} from '../schema/entity-schema.js';
-import {isAggregate} from './agg.js';
+import {AggArray, Aggregate, isAggregate} from './agg.js';
 import {Statement} from './statement.js';
-
-// type FieldValue<S extends EntitySchema, K extends Selectable<S>> = S[K] extends
-//   | Primitive
-//   | undefined
-//   ? S[K]
-//   : never;
 
 type FromSet = {
   [tableOrAlias: string]: EntitySchema;
 };
 
-// type AggregateValue<S extends EntitySchema, K extends Aggregable<S>> =
-//   K extends Count<string>
-//     ? number
-//     : K extends AggArray<string, string>
-//       ? S[K['field']][]
-//       : K extends Exclude<Aggregable<S>, Count<string>>
-//         ? S[K['field']]
-//         : never;
-
-export type SelectedFields<
-  S extends EntitySchema,
-  Fields extends Selectable<EntitySchema>[],
-> = Pick<S, Fields[number] extends keyof S ? Fields[number] : never>;
-
-// type SelectedAggregates<
-//   S extends EntitySchema,
-//   Aggregates extends Aggregable<S>[],
-// > = {
-//   [K in Aggregates[number]['alias']]: AggregateValue<
-//     S,
-//     Extract<Aggregates[number], {alias: K}>
-//   >;
-// };
+type AggregateValue<From extends FromSet, K extends Aggregator<From>> =
+  K extends AggArray<infer S, string>
+    ? ExtractFieldType<From, S extends SimpleSelector<From> ? S : never>[]
+    : number;
 
 type AsString<T> = T extends string ? T : never;
 type NestedKeys<T> = {
@@ -87,26 +62,27 @@ type ExtractFieldType<F extends FromSet, S extends Selector<F>> = S extends [
 
 type CombineSelections<
   F extends FromSet,
-  Selections extends Selector<F>[],
+  Selections extends (Selector<F> | Aggregator<F>)[],
 > = Selections extends [infer First, ...infer Rest]
   ? First extends Selector<F>
     ? CombineSelections<F, Rest extends Selector<F>[] ? Rest : []> &
         ExtractFieldType<F, First>
-    : never
+    : First extends Aggregator<F>
+      ? CombineSelections<F, Rest extends Selector<F>[] ? Rest : []> &
+          AggregateValue<F, First>
+      : never
   : unknown;
 
-export type Selectable<S extends EntitySchema> = AsString<keyof S> | 'id';
+type Aggregator<From extends FromSet> = Aggregate<SimpleSelector<From>, string>;
 
-// type Aggregable<S extends EntitySchema> = Aggregate<AsString<keyof S>, string>;
-
-// type ToSelectableOnly<T, S extends EntitySchema> = T extends (infer U)[]
-//   ? U extends Selectable<S>
+// type ToSelectorOnly<T, From extends FromSet> = T extends (infer U)[]
+//   ? U extends Selector<From>
 //     ? U[]
 //     : never
 //   : never;
 
-// type ToAggregableOnly<T, S extends EntitySchema> = T extends (infer U)[]
-//   ? U extends Aggregable<S>
+// type ToAggregatorOnly<T, From extends FromSet> = T extends (infer U)[]
+//   ? U extends Aggregator<From>
 //     ? U[]
 //     : never
 //   : never;
@@ -159,7 +135,9 @@ export class EntityQuery<From extends FromSet, Return = []> {
     astWeakMap.set(this, this.#ast);
   }
 
-  select<Fields extends Selector<From>[]>(...x: Fields) {
+  select<Fields extends Selector<From>[]>(
+    ...x: Fields
+  ): EntityQuery<From, CombineSelections<From, Fields>[]> {
     const select = new Set(this.#ast.select);
     const aggregate: Aggregation[] = [];
     for (const more of x) {
@@ -371,3 +349,14 @@ function negateOperator(op: SimpleOperator): SimpleOperator {
       return 'ILIKE';
   }
 }
+
+const q: EntityQuery<{
+  user: {
+    id: string;
+    name: string;
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+}> = {} as any;
+
+import * as agg from './agg.js';
+const f = q.select('user.name', 'user.id').prepare().exec();

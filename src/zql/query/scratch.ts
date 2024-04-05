@@ -116,16 +116,20 @@ type User = {
   email: string;
 };
 
-const q: EntityQuery<{issue: Issue}> = {} as any;
+const issueQuery: EntityQuery<{issue: Issue}> = {} as any;
 const q2: EntityQuery<{user: User}> = {} as any;
-const q3 = q.join(q2.select('user.*'), 'owner', 'issue.ownerId', 'owner.id');
+// const q3 = q.join(q2.select('user.*'), 'owner', 'issue.ownerId', 'owner.id');
 
-q3.select('issue.title', 'owner.email');
+// q3.select('issue.title', 'owner.email');
 // q3.select('');
 
 // q3.select('user.id')
-// const q3 = q.join(q2.select('user.name'), 'user', 'issue.ownerId', 'user.id');
-// q3.select('');
+
+const userQuery = q2.select('user.*');
+
+issueQuery.join(userQuery, 'owner', 'issue.ownerId', 'owner.id').select('');
+
+q3.select('');
 
 console.log(q);
 
