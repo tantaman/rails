@@ -12,7 +12,6 @@ export class UnaryOperator<I extends object, O extends object>
 {
   readonly #listener: Listener<I>;
   readonly #input: DifferenceStream<I>;
-  readonly #output: DifferenceStream<O>;
 
   constructor(
     input: DifferenceStream<I>,
@@ -23,17 +22,9 @@ export class UnaryOperator<I extends object, O extends object>
       newDifference: (version, data) => {
         output.newData(version, fn(version, data));
       },
-      commit: version => {
-        this.commit(version);
-      },
     };
     input.addDownstream(this.#listener);
     this.#input = input;
-    this.#output = output;
-  }
-
-  commit(version: Version): void {
-    this.#output.commit(version);
   }
 
   messageUpstream(message: Request): void {

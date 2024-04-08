@@ -1,12 +1,12 @@
 import {DifferenceStream, Listener} from '../graph/difference-stream.js';
-import {Materialite} from '../materialite.js';
+import {MaterialiteInternal} from '../materialite.js';
 import {Multiset} from '../multiset.js';
 import {Version} from '../types.js';
 import {View} from './view.js';
 
 export abstract class AbstractView<T extends object, CT> implements View<CT> {
   readonly #stream;
-  protected readonly _materialite: Materialite;
+  protected readonly _materialite: MaterialiteInternal;
   protected readonly _listener: Listener<T>;
   readonly #listeners: Set<(s: CT, v: Version) => void> = new Set();
   readonly name;
@@ -24,7 +24,7 @@ export abstract class AbstractView<T extends object, CT> implements View<CT> {
    * @param comparator How to sort results
    */
   constructor(
-    materialite: Materialite,
+    materialite: MaterialiteInternal,
     stream: DifferenceStream<T>,
     name: string = '',
   ) {
@@ -33,6 +33,7 @@ export abstract class AbstractView<T extends object, CT> implements View<CT> {
     this.#stream = stream;
     this._listener = {
       newDifference: (version: Version, data: Multiset<T>) => {
+        this._materialite.addDirtyNode(this.#commit);
         if (version > this.#lastSeenVersion) {
           this.#lastSeenVersion = version;
           this.#didVersionChange = false;
@@ -42,13 +43,14 @@ export abstract class AbstractView<T extends object, CT> implements View<CT> {
           this.#didVersionChange = true;
         }
       },
-      commit: (v: Version) => {
-        this.#hydrated = true;
-        this._notifyCommitted(this.value, v);
-      },
     };
     this.#stream.addDownstream(this._listener);
   }
+
+  #commit = (version: Version) => {
+    this.#hydrated = true;
+    this.#notifyCommitted(this.value, version);
+  };
 
   get stream() {
     return this.#stream;
@@ -60,7 +62,7 @@ export abstract class AbstractView<T extends object, CT> implements View<CT> {
 
   abstract pullHistoricalData(): void;
 
-  protected _notifyCommitted(d: CT, version: Version) {
+  #notifyCommitted(d: CT, version: Version) {
     if (!this.#didVersionChange) {
       return;
     }

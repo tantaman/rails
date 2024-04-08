@@ -1,12 +1,12 @@
 import {expect, test} from 'vitest';
-import {DifferenceStream} from './difference-stream.js';
 import {Materialite} from '../materialite.js';
 import {createPullMessage, createPullResponseMessage} from './message.js';
 import {DebugOperator} from './operators/debug-operator.js';
 
 type Elem = {x: number};
 test('map', () => {
-  const s = new DifferenceStream<Elem>();
+  const m = new Materialite();
+  const s = m.newStream<Elem>();
   let expectRan = 0;
   s.map(x => ({
     x: x.x * 2,
@@ -15,36 +15,40 @@ test('map', () => {
     expect(x).toEqual({x: 4});
   });
 
-  s.newData(1, [
-    [{x: 2}, 1],
-    [{x: 2}, 1],
-    [{x: 2}, 1],
-  ]);
-  s.commit(1);
+  m.tx(() => {
+    s.newData(1, [
+      [{x: 2}, 1],
+      [{x: 2}, 1],
+      [{x: 2}, 1],
+    ]);
+  });
 
   expect(expectRan).toBe(3);
 });
 
 test('filter', () => {
-  const s = new DifferenceStream<Elem>();
+  const m = new Materialite();
+  const s = m.newStream<Elem>();
   let expectRan = 0;
   s.filter(x => x.x % 2 === 0).effect(x => {
     expectRan++;
     expect(x).toEqual({x: 2});
   });
 
-  s.newData(1, [
-    [{x: 1}, 1],
-    [{x: 2}, 1],
-    [{x: 3}, 1],
-  ]);
-  s.commit(1);
+  m.tx(() => {
+    s.newData(1, [
+      [{x: 1}, 1],
+      [{x: 2}, 1],
+      [{x: 3}, 1],
+    ]);
+  });
 
   expect(expectRan).toBe(1);
 });
 
 test('count', () => {
-  const s = new DifferenceStream<Elem>();
+  const m = new Materialite();
+  const s = m.newStream<Elem>();
   let expectRan = 0;
   let expectedCount = 3;
   s.count('count').effect((x, mult) => {
@@ -54,29 +58,32 @@ test('count', () => {
     }
   });
 
-  s.newData(1, [
-    [{x: 1}, 1],
-    [{x: 2}, 1],
-    [{x: 3}, 1],
-  ]);
-  s.commit(1);
+  m.tx(() => {
+    s.newData(1, [
+      [{x: 1}, 1],
+      [{x: 2}, 1],
+      [{x: 3}, 1],
+    ]);
+  });
 
   expect(expectRan).toBe(1);
 
-  s.newData(2, [
-    [{x: 1}, 1],
-    [{x: 2}, 1],
-    [{x: 3}, 1],
-    [{x: 3}, 1],
-  ]);
   expectedCount = 7;
-  s.commit(2);
+  m.tx(() => {
+    s.newData(2, [
+      [{x: 1}, 1],
+      [{x: 2}, 1],
+      [{x: 3}, 1],
+      [{x: 3}, 1],
+    ]);
+  });
 
   expect(expectRan).toBe(2);
 });
 
-test('map, filter, linearCount', () => {
-  const s = new DifferenceStream<Elem>();
+test('map, filter, count', () => {
+  const m = new Materialite();
+  const s = m.newStream<Elem>();
   let expectRan = 0;
   let expectedCount = 1;
   s.map(x => ({
@@ -91,17 +98,19 @@ test('map, filter, linearCount', () => {
       }
     });
 
-  s.newData(1, [[{x: 1}, 1]]);
-  s.commit(1);
+  m.tx(() => {
+    s.newData(1, [[{x: 1}, 1]]);
+  });
 
   expect(expectRan).toBe(1);
 
-  s.newData(2, [
-    [{x: 1}, 1],
-    [{x: 2}, 1],
-  ]);
   expectedCount = 3;
-  s.commit(2);
+  m.tx(() => {
+    s.newData(2, [
+      [{x: 1}, 1],
+      [{x: 2}, 1],
+    ]);
+  });
 
   expect(expectRan).toBe(2);
 });
@@ -155,24 +164,29 @@ test('cleaning up the only user of a stream cleans up the entire pipeline but st
 
 test('adding data runs the operator', () => {
   let ran = false;
-  const stream = new DifferenceStream();
+  const m = new Materialite();
+  const stream = m.newStream();
   stream.debug((_, _data) => {
     ran = true;
   });
   expect(ran).toBe(false);
-  stream.newData(1, []);
+  m.tx(() => {
+    stream.newData(1, []);
+  });
   expect(ran).toBe(true);
 });
 
 test('commit notifies the operator', () => {
   let ran = false;
-  const stream = new DifferenceStream();
+  const m = new Materialite();
+  const stream = m.newStream();
   stream.effect(() => {
     ran = true;
   });
-  stream.newData(1, [[{}, 1]]);
-  expect(ran).toBe(false);
-  stream.commit(1);
+  m.tx(() => {
+    stream.newData(1, [[{}, 1]]);
+    expect(ran).toBe(false);
+  });
   expect(ran).toBe(true);
 });
 
@@ -185,8 +199,8 @@ test('replying to a message only notifies along the requesting path', () => {
     |  |  |
     d  d  d
   */
-
-  const stream = new DifferenceStream();
+  const m = new Materialite();
+  const stream = m.newStream();
   const notified: number[] = [];
 
   const s1 = stream.debug(() => notified.push(1));
@@ -194,7 +208,7 @@ test('replying to a message only notifies along the requesting path', () => {
   const s3 = stream.debug(() => notified.push(3));
 
   s1.debug(() => notified.push(4));
-  const x = new DifferenceStream();
+  const x = m.newStream();
   const s2Dbg = new DebugOperator(s2, x, () => notified.push(5));
   x.setUpstream(s2Dbg);
   s3.debug(() => notified.push(6));
@@ -205,7 +219,9 @@ test('replying to a message only notifies along the requesting path', () => {
 
   expect(notified).toEqual([]);
 
-  stream.newData(1, [], createPullResponseMessage(msg));
+  m.tx(() => {
+    stream.newData(1, [], createPullResponseMessage(msg));
+  });
 
   expect(notified).toEqual([2, 5]);
 });

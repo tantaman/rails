@@ -3,7 +3,7 @@ import {Comparator, ITree} from '@vlcn.io/ds-and-algos/types';
 import {Ordering} from '../../ast/ast.js';
 import {DifferenceStream} from '../graph/difference-stream.js';
 import {createPullMessage} from '../graph/message.js';
-import {Materialite} from '../materialite.js';
+import {MaterialiteInternal} from '../materialite.js';
 import {Multiset} from '../multiset.js';
 import {AbstractView} from './abstract-view.js';
 
@@ -30,7 +30,7 @@ export class MutableTreeView<T extends object> extends AbstractView<T, T[]> {
   readonly #comparator;
 
   constructor(
-    materialite: Materialite,
+    materialite: MaterialiteInternal,
     stream: DifferenceStream<T>,
     comparator: Comparator<T>,
     order: Ordering | undefined,

@@ -1,15 +1,12 @@
 import {expect, test} from 'vitest';
 import {Multiset} from '../../multiset.js';
-import {DifferenceStream, concat} from '../difference-stream.js';
+import {Materialite} from '../../materialite.js';
 
+const m = new Materialite();
 test('All branches notify', () => {
   type T = {x: number};
-  const inputs = [
-    new DifferenceStream<T>(),
-    new DifferenceStream<T>(),
-    new DifferenceStream<T>(),
-  ];
-  const output = concat(inputs);
+  const inputs = [m.newStream<T>(), m.newStream<T>(), m.newStream<T>()];
+  const output = inputs[0].concat([inputs[1], inputs[2]]);
 
   let version = 1;
 
@@ -23,7 +20,6 @@ test('All branches notify', () => {
     [{x: 1}, 1],
     [{x: 2}, 2],
   ]);
-  inputs[0].commit(version);
 
   expect(items).toEqual([
     [
@@ -38,17 +34,14 @@ test('All branches notify', () => {
   inputs[0].newData(version, [[{x: 0}, 1]]);
   inputs[1].newData(version, [[{x: 1}, 1]]);
   inputs[2].newData(version, [[{x: 2}, 2]]);
-  inputs[0].commit(version);
-  inputs[1].commit(version);
-  inputs[2].commit(version);
   expect(items).toEqual([[[{x: 0}, 1]], [[{x: 1}, 1]], [[{x: 2}, 2]]]);
 });
 
 test('Test with single input', () => {
   type T = {x: number};
-  const input = new DifferenceStream<T>();
+  const input = m.newStream<T>();
 
-  const output = concat([input]);
+  const output = input.concat([]);
 
   const version = 1;
 
@@ -62,7 +55,6 @@ test('Test with single input', () => {
     [{x: 1}, 1],
     [{x: 2}, 2],
   ]);
-  input.commit(version);
 
   expect(items).toEqual([
     [

@@ -3,7 +3,7 @@ import {Comparator, ITree} from '@vlcn.io/ds-and-algos/types';
 import {must} from '../../error/asserts.js';
 import {DifferenceStream} from '../graph/difference-stream.js';
 import {PullMsg, Request, createPullResponseMessage} from '../graph/message.js';
-import {MaterialiteForSourceInternal} from '../materialite.js';
+import {MaterialiteInternal} from '../materialite.js';
 import {Entry, Multiset} from '../multiset.js';
 import {Version} from '../types.js';
 import {Source, SourceInternal} from './source.js';
@@ -18,7 +18,7 @@ import {Source, SourceInternal} from './source.js';
 export abstract class SetSource<T extends object> implements Source<T> {
   readonly #stream: DifferenceStream<T>;
   readonly #internal: SourceInternal;
-  protected readonly _materialite: MaterialiteForSourceInternal;
+  protected readonly _materialite: MaterialiteInternal;
   readonly #listeners = new Set<(data: ITree<T>, v: Version) => void>();
   #pending: Entry<T>[] = [];
   #tree: ITree<T>;
@@ -28,14 +28,13 @@ export abstract class SetSource<T extends object> implements Source<T> {
   readonly comparator: Comparator<T>;
 
   constructor(
-    materialite: MaterialiteForSourceInternal,
+    materialite: MaterialiteInternal,
     comparator: Comparator<T>,
     treapConstructor: (comparator: Comparator<T>) => ITree<T>,
   ) {
     this._materialite = materialite;
-    this.#stream = new DifferenceStream<T>();
+    this.#stream = new DifferenceStream<T>(materialite);
     this.#stream.setUpstream({
-      commit: () => {},
       messageUpstream: (message: Request) => {
         this.processMessage(message);
       },
@@ -72,13 +71,10 @@ export abstract class SetSource<T extends object> implements Source<T> {
         this.#stream.newData(version, this.#pending);
         this.#pending = [];
       },
-      onCommitted: (version: Version) => {
-        // In case we have direct source observers
-        const tree = this.#tree;
-        for (const l of this.#listeners) {
-          l(tree, version);
+      onCommit: () => {
+        for (const listener of this.#listeners) {
+          listener(this.#tree, this._materialite.getVersion());
         }
-        this.#stream.commit(version);
       },
       onRollback: () => {
         this.#pending = [];
@@ -175,20 +171,18 @@ export abstract class SetSource<T extends object> implements Source<T> {
 
     const response = createPullResponseMessage(message);
 
-    this.#stream.newData(
-      this._materialite.getVersion(),
-      asEntries(this.#tree, message),
-      response,
-    );
-    this.#stream.commit(this._materialite.getVersion());
+    this._materialite.materialite.tx(() => {
+      this.#stream.newData(
+        this._materialite.getVersion(),
+        asEntries(this.#tree, message),
+        response,
+      );
+    });
   }
 }
 
 export class MutableSetSource<T extends object> extends SetSource<T> {
-  constructor(
-    materialite: MaterialiteForSourceInternal,
-    comparator: Comparator<T>,
-  ) {
+  constructor(materialite: MaterialiteInternal, comparator: Comparator<T>) {
     super(materialite, comparator, comparator => new Treap(comparator));
   }
 

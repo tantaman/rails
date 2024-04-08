@@ -1,7 +1,6 @@
 import {expect, test} from 'vitest';
 import {Materialite} from '../materialite.js';
 import {applySelect, orderingProp} from '../../ast-to-ivm/pipeline-builder.js';
-import {MutableTreeView} from './tree-view.js';
 import {ascComparator, descComparator} from '../../query/statement.js';
 import {DifferenceStream} from '../graph/difference-stream.js';
 import fc from 'fast-check';
@@ -21,20 +20,14 @@ test('asc and descComparator on Entities', () => {
     [['n', 'id'], 'asc'],
   ) as unknown as DifferenceStream<Selected>;
 
-  const view = new MutableTreeView<Selected>(m, updatedStream, ascComparator, [
-    ['n', 'id'],
-    'asc',
-  ]);
-  const descView = new MutableTreeView<Selected>(
-    m,
+  const view = updatedStream.materialize(ascComparator, [['n', 'id'], 'asc']);
+  const descView = (
     applySelect(
       s.stream as unknown as DifferenceStream<Entity>,
       ['id'],
       [['n', 'id'], 'desc'],
-    ) as unknown as DifferenceStream<Selected>,
-    descComparator,
-    [['n', 'id'], 'desc'],
-  );
+    ) as unknown as DifferenceStream<Selected>
+  ).materialize(descComparator, [['n', 'id'], 'desc']);
 
   const items = [
     {id: 'a', n: 1},
@@ -55,12 +48,7 @@ test('add & remove', () => {
     fc.property(fc.uniqueArray(fc.integer()), arr => {
       const m = new Materialite();
       const source = m.newSetSource<{x: number}>((l, r) => l.x - r.x);
-      const view = new MutableTreeView(
-        m,
-        source.stream,
-        (l, r) => l.x - r.x,
-        undefined,
-      );
+      const view = source.stream.materialize((l, r) => l.x - r.x);
 
       m.tx(() => {
         arr.forEach(x => source.add({x}));
@@ -80,10 +68,10 @@ test('replace', () => {
     fc.property(fc.uniqueArray(fc.integer()), arr => {
       const m = new Materialite();
       const source = m.newSetSource<{x: number}>((l, r) => l.x - r.x);
-      const view = new MutableTreeView(m, source.stream, (l, r) => l.x - r.x, [
-        ['id'],
-        'asc',
-      ]);
+      const view = source.stream.materialize(
+        (l, r) => l.x - r.x,
+        [['id'], 'asc'],
+      );
 
       m.tx(() => {
         arr.forEach(x => source.add({x}));

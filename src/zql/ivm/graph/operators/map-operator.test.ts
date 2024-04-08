@@ -1,10 +1,11 @@
 import {expect, test} from 'vitest';
 import {Multiset} from '../../multiset.js';
-import {DifferenceStream} from '../difference-stream.js';
+import {Materialite} from '../../materialite.js';
 
 type E = {id: number};
+const m = new Materialite();
 test('lazy', () => {
-  const input = new DifferenceStream<E>();
+  const input = m.newStream<E>();
   let called = false;
   const output = input.map(x => {
     called = true;
@@ -15,13 +16,14 @@ test('lazy', () => {
     items.push(d);
   });
 
-  input.newData(1, [
-    [{id: 1}, 1],
-    [{id: 2}, 2],
-    [{id: 1}, -1],
-    [{id: 2}, -2],
-  ]);
-  input.commit(1);
+  m.tx(() => {
+    input.newData(1, [
+      [{id: 1}, 1],
+      [{id: 2}, 2],
+      [{id: 1}, -1],
+      [{id: 2}, -2],
+    ]);
+  });
 
   // we run the graph but the mapper is not run until we pull on it
   expect(called).toBe(false);
@@ -34,7 +36,7 @@ test('lazy', () => {
 });
 
 test('applies to rows', () => {
-  const input = new DifferenceStream<E>();
+  const input = m.newStream<E>();
   const output = input.map(x => ({
     id: x.id * 2,
   }));
@@ -43,13 +45,14 @@ test('applies to rows', () => {
     items.push([e, m]);
   });
 
-  input.newData(1, [
-    [{id: 1}, 1],
-    [{id: 2}, 2],
-    [{id: 1}, -1],
-    [{id: 2}, -2],
-  ]);
-  input.commit(1);
+  m.tx(() => {
+    input.newData(1, [
+      [{id: 1}, 1],
+      [{id: 2}, 2],
+      [{id: 1}, -1],
+      [{id: 2}, -2],
+    ]);
+  });
 
   expect(items).toEqual([
     [{id: 2}, 1],

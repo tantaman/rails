@@ -1,12 +1,13 @@
 import {expect, test} from 'vitest';
 import {Multiset} from '../../multiset.js';
-import {DifferenceStream} from '../difference-stream.js';
+import {Materialite} from '../../materialite.js';
 
+const m = new Materialite();
 test('distinct', () => {
   type T = {
     id: string;
   };
-  const input = new DifferenceStream<T>();
+  const input = m.newStream<T>();
   const output = input.distinct();
 
   let version = 1;
@@ -23,7 +24,6 @@ test('distinct', () => {
     [{id: 'a'}, -1],
     [{id: 'c'}, -3],
   ]);
-  input.commit(version);
 
   expect(items).toEqual([
     [
@@ -35,27 +35,23 @@ test('distinct', () => {
   version++;
   items.length = 0;
   input.newData(version, [[{id: 'b'}, -2]]);
-  input.commit(version);
   expect(items).toEqual([[[{id: 'b'}, -1]]]);
 
   version++;
   items.length = 0;
   input.newData(version, [[{id: 'd'}, -1]]);
   input.newData(version, [[{id: 'd'}, 1]]);
-  input.commit(version);
   expect(items).toEqual([[[{id: 'd'}, -1]], [[{id: 'd'}, 1]]]);
 
   version++;
   items.length = 0;
   input.newData(version, [[{id: 'e'}, -1]]);
   input.newData(version, [[{id: 'e'}, 5]]);
-  input.commit(version);
   expect(items).toEqual([[[{id: 'e'}, -1]], [[{id: 'e'}, 2]]]);
 
   version++;
   items.length = 0;
   input.newData(version, [[{id: 'e'}, 5]]);
   input.newData(version, [[{id: 'e'}, -6]]);
-  input.commit(version);
   expect(items).toEqual([[[{id: 'e'}, 1]], [[{id: 'e'}, -2]]]);
 });

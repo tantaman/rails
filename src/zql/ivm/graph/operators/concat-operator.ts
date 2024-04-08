@@ -10,26 +10,17 @@ import {Operator} from './operator.js';
 export class ConcatOperator<T extends object> implements Operator {
   readonly #listener: Listener<T>;
   readonly #inputs: DifferenceStream<T>[];
-  readonly #output: DifferenceStream<T>;
 
   constructor(inputs: DifferenceStream<T>[], output: DifferenceStream<T>) {
     this.#inputs = inputs;
-    this.#output = output;
     this.#listener = {
       newDifference: (version, data) => {
         output.newData(version, data);
-      },
-      commit: version => {
-        this.commit(version);
       },
     };
     for (const input of inputs) {
       input.addDownstream(this.#listener);
     }
-  }
-
-  commit(version: number): void {
-    this.#output.commit(version);
   }
 
   messageUpstream(message: PullMsg): void {

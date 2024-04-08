@@ -1,8 +1,11 @@
+import {Comparator} from '@vlcn.io/ds-and-algos/types';
 import {Entity} from '../../../generate.js';
-import {Primitive} from '../../ast/ast.js';
+import {Ordering, Primitive} from '../../ast/ast.js';
 import {invariant} from '../../error/asserts.js';
+import {MaterialiteInternal} from '../materialite.js';
 import {Multiset} from '../multiset.js';
 import {Version} from '../types.js';
+import {MutableTreeView} from '../view/tree-view.js';
 import {Reply, Request} from './message.js';
 import {ConcatOperator} from './operators/concat-operator.js';
 import {DebugOperator} from './operators/debug-operator.js';
@@ -25,7 +28,6 @@ export type Listener<T> = {
     multiset: Multiset<T>,
     reply?: Reply | undefined,
   ) => void;
-  commit: (version: Version) => void;
 };
 
 /**
@@ -64,6 +66,11 @@ export class DifferenceStream<T extends object> {
    * Downstreams that requested historical data.
    */
   readonly #requestors = new Set<Listener<T>>();
+  readonly #materialite: MaterialiteInternal;
+
+  constructor(materialite: MaterialiteInternal) {
+    this.#materialite = materialite;
+  }
 
   addDownstream(listener: Listener<T>) {
     this.#downstreams.add(listener);
@@ -80,6 +87,7 @@ export class DifferenceStream<T extends object> {
       for (const requestor of this.#requestors) {
         requestor.newDifference(version, data, reply);
       }
+      this.#requestors.clear();
     } else {
       for (const listener of this.#downstreams) {
         listener.newDifference(version, data, reply);
@@ -92,43 +100,22 @@ export class DifferenceStream<T extends object> {
     this.#upstream?.messageUpstream(message);
   }
 
-  commit(version: Version) {
-    if (this.#requestors.size > 0) {
-      for (const requestor of this.#requestors) {
-        try {
-          requestor.commit(version);
-        } catch (e) {
-          // `commit` notifies client code
-          // If client code throws we'll put IVM back into a consistent state
-          // by clearing the requestors.
-          this.#requestors.clear();
-          throw e;
-        }
-      }
-      this.#requestors.clear();
-    } else {
-      for (const listener of this.#downstreams) {
-        listener.commit(version);
-      }
-    }
-  }
-
   map<O extends object>(f: (value: T) => O): DifferenceStream<O> {
-    const stream = new DifferenceStream<O>();
+    const stream = new DifferenceStream<O>(this.#materialite);
     return stream.setUpstream(new MapOperator<T, O>(this, stream, f));
   }
 
   filter<S extends T>(f: (x: T) => x is S): DifferenceStream<S>;
   filter(f: (x: T) => boolean): DifferenceStream<T>;
   filter<S extends T>(f: (x: T) => boolean): DifferenceStream<S> {
-    const stream = new DifferenceStream<S>();
+    const stream = new DifferenceStream<S>(this.#materialite);
     return stream.setUpstream(
       new FilterOperator<T>(this, stream as unknown as DifferenceStream<T>, f),
     );
   }
 
   distinct(): DifferenceStream<T> {
-    const stream = new DifferenceStream<T>();
+    const stream = new DifferenceStream<T>(this.#materialite);
     return stream.setUpstream(
       new DistinctOperator<Entity>(
         this as unknown as DifferenceStream<Entity>,
@@ -142,7 +129,7 @@ export class DifferenceStream<T extends object> {
     getIdentity: (value: T) => string,
     f: (input: Iterable<T>) => O,
   ): DifferenceStream<O> {
-    const stream = new DifferenceStream<O>();
+    const stream = new DifferenceStream<O>(this.#materialite);
     return stream.setUpstream(
       new ReduceOperator<K, T, O>(this, stream, getIdentity, getKey, f),
     );
@@ -154,7 +141,9 @@ export class DifferenceStream<T extends object> {
    * @returns returns the size of the stream
    */
   count<Alias extends string>(alias: Alias) {
-    const stream = new DifferenceStream<AggregateOut<T, [[Alias, number]]>>();
+    const stream = new DifferenceStream<AggregateOut<T, [[Alias, number]]>>(
+      this.#materialite,
+    );
     return stream.setUpstream(new FullCountOperator(this, stream, alias));
   }
 
@@ -162,14 +151,32 @@ export class DifferenceStream<T extends object> {
     field: Field,
     alias: Alias,
   ) {
-    const stream = new DifferenceStream<AggregateOut<T, [[Alias, number]]>>();
+    const stream = new DifferenceStream<AggregateOut<T, [[Alias, number]]>>(
+      this.#materialite,
+    );
     return stream.setUpstream(new FullAvgOperator(this, stream, field, alias));
   }
 
   sum<Field extends keyof T, Alias extends string>(field: Field, alias: Alias) {
-    const stream = new DifferenceStream<AggregateOut<T, [[Alias, number]]>>();
+    const stream = new DifferenceStream<AggregateOut<T, [[Alias, number]]>>(
+      this.#materialite,
+    );
     stream.setUpstream(new FullSumOperator(this, stream, field, alias));
     return stream;
+  }
+
+  materialize(
+    comparator: Comparator<T>,
+    orderBy?: Ordering | undefined,
+    limit?: number | undefined,
+  ) {
+    return new MutableTreeView<T>(
+      this.#materialite,
+      this,
+      comparator,
+      orderBy,
+      limit,
+    );
   }
 
   /**
@@ -179,13 +186,15 @@ export class DifferenceStream<T extends object> {
    * `mult === 0` is a no-op and can be ignored. Generally shouldn't happen.
    */
   effect(f: (i: T, mult: number) => void) {
-    const stream = new DifferenceStream<T>();
-    stream.setUpstream(new DifferenceEffectOperator(this, stream, f));
+    const stream = new DifferenceStream<T>(this.#materialite);
+    stream.setUpstream(
+      new DifferenceEffectOperator(this.#materialite, this, stream, f),
+    );
     return stream;
   }
 
   debug(onMessage: (v: Version, data: Multiset<T>) => void) {
-    const stream = new DifferenceStream<T>();
+    const stream = new DifferenceStream<T>(this.#materialite);
     stream.setUpstream(new DebugOperator(this, stream, onMessage));
     return stream;
   }
@@ -203,11 +212,16 @@ export class DifferenceStream<T extends object> {
       this.destroy();
     }
   }
+
+  concat(streams: DifferenceStream<T>[]) {
+    return concat(this.#materialite, [this, ...streams]);
+  }
 }
 
 export function concat<T extends object>(
+  materialite: MaterialiteInternal,
   streams: DifferenceStream<T>[],
 ): DifferenceStream<T> {
-  const stream = new DifferenceStream<T>();
+  const stream = new DifferenceStream<T>(materialite);
   return stream.setUpstream(new ConcatOperator(streams, stream));
 }

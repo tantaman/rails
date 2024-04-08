@@ -133,6 +133,7 @@ test('destroying the statement stops updating the view', async () => {
   context.getSource('e1').add(items[0]);
   expect(callCount).toBe(1);
   stmt.destroy();
+  console.log('drestory!');
   context.getSource('e1').add(items[1]);
   context.getSource('e1').add(items[2]);
   expect(callCount).toBe(1);

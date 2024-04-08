@@ -1,3 +1,4 @@
+import {MaterialiteInternal} from '../../materialite.js';
 import {Multiset} from '../../multiset.js';
 import {Version} from '../../types.js';
 import {DifferenceStream} from '../difference-stream.js';
@@ -18,11 +19,13 @@ export class DifferenceEffectOperator<T extends object> extends UnaryOperator<
   #collected: Multiset<T>[] = [];
 
   constructor(
+    materialite: MaterialiteInternal,
     input: DifferenceStream<T>,
     output: DifferenceStream<T>,
     f: (input: T, mult: number) => void,
   ) {
     const inner = (_version: Version, data: Multiset<T>) => {
+      materialite.addDirtyNode(this.#commit);
       this.#collected.push(data);
       return data;
     };
@@ -30,7 +33,7 @@ export class DifferenceEffectOperator<T extends object> extends UnaryOperator<
     this.#f = f;
   }
 
-  commit(v: number): void {
+  #commit = (_v: number) => {
     const collected = this.#collected;
     this.#collected = [];
     for (const collection of collected) {
@@ -38,6 +41,5 @@ export class DifferenceEffectOperator<T extends object> extends UnaryOperator<
         this.#f(val, mult);
       }
     }
-    super.commit(v);
-  }
+  };
 }

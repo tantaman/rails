@@ -3,19 +3,22 @@ import {SourceInternal} from './source/source.js';
 import {MutableSetSource} from './source/set-source.js';
 import {Version} from './types.js';
 import {must} from '../error/asserts.js';
+import {DifferenceStream} from './graph/difference-stream.js';
 
-export type MaterialiteForSourceInternal = {
+export type MaterialiteInternal = {
   readonly materialite: Materialite;
   getVersion(): number;
   addDirtySource(source: SourceInternal): void;
+  addDirtyNode(node: (version: Version) => void): void;
 };
 
 export class Materialite {
   #version: Version;
   #dirtySources: Set<SourceInternal> = new Set();
+  #dirtyGraphNodes: Set<(version: Version) => void> = new Set();
 
   #currentTx: Version | null = null;
-  #internal: MaterialiteForSourceInternal;
+  #internal: MaterialiteInternal;
 
   constructor() {
     this.#version = 0;
@@ -30,11 +33,18 @@ export class Materialite {
           this.#commit();
         }
       },
+      addDirtyNode: (node: (version: Version) => void) => {
+        this.#dirtyGraphNodes.add(node);
+      },
     };
   }
 
   newSetSource<T extends object>(comparator: Comparator<T>) {
     return new MutableSetSource<T>(this.#internal, comparator);
+  }
+
+  newStream<T extends object>() {
+    return new DifferenceStream<T>(this.#internal);
   }
 
   /**
@@ -66,14 +76,17 @@ export class Materialite {
       return;
     }
 
+    let userExceptions;
     try {
       fn();
-      this.#commit();
+      userExceptions = this.#commit();
     } catch (e) {
       this.#rollback();
       throw e;
-    } finally {
-      this.#dirtySources.clear();
+    }
+
+    if (userExceptions.length > 0) {
+      throw userExceptions;
     }
   }
 
@@ -90,8 +103,32 @@ export class Materialite {
     for (const source of this.#dirtySources) {
       source.onCommitEnqueue(this.#version);
     }
+    const userExceptions = [];
+
     for (const source of this.#dirtySources) {
-      source.onCommitted(this.#version);
+      try {
+        source.onCommit(this.#version);
+      } catch (e) {
+        userExceptions.push(e);
+      }
     }
+
+    // Graph is run synchronously so all nodes
+    // would have run as soon as data is enqueued above.
+    // rather then flow through the graph again to tell nodes
+    // to notify their commit listeners, nodes that _have_ listeners
+    // register with us. Only a fraction of nodes will have commit listeners (e.g., views and effects)
+    for (const node of this.#dirtyGraphNodes) {
+      try {
+        node(this.#version);
+      } catch (e) {
+        // commit listeners are user code.
+        userExceptions.push(e);
+      }
+    }
+
+    this.#dirtySources.clear();
+    this.#dirtyGraphNodes.clear();
+    return userExceptions;
   }
 }

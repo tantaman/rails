@@ -5,7 +5,6 @@ import {Context} from '../context/context.js';
 import {invariant, must} from '../error/asserts.js';
 import {compareEntityFields} from '../ivm/compare.js';
 import {DifferenceStream} from '../ivm/graph/difference-stream.js';
-import {MutableTreeView} from '../ivm/view/tree-view.js';
 import {View} from '../ivm/view/view.js';
 import {MakeHumanReadable} from './entity-query.js';
 
@@ -19,7 +18,6 @@ export interface IStatement<TReturn> {
 export class Statement<Return> implements IStatement<Return> {
   readonly #pipeline;
   readonly #ast;
-  readonly #context;
   #materialization: View<Return extends [] ? Return[number] : Return> | null =
     null;
 
@@ -31,20 +29,16 @@ export class Statement<Return> implements IStatement<Return> {
           .stream as unknown as DifferenceStream<T>,
       ast,
     );
-    this.#context = context;
   }
 
   view(): View<Return> {
     // TODO: invariants to throw if the statement is not completely bound before materialization.
     if (this.#materialization === null) {
-      this.#materialization = new MutableTreeView<
-        Return extends [] ? Return[number] : never
-      >(
-        this.#context.materialite,
-        this.#pipeline as unknown as DifferenceStream<
-          Return extends [] ? Return[number] : never
-        >,
-        this.#ast.orderBy[1] === 'asc' ? ascComparator : descComparator,
+      this.#materialization = this.#pipeline.materialize(
+        (this.#ast.orderBy[1] === 'asc'
+          ? ascComparator
+          : // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            descComparator) as any,
         this.#ast.orderBy,
         this.#ast.limit,
       ) as unknown as View<Return extends [] ? Return[number] : Return>;

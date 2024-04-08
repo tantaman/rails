@@ -7,7 +7,7 @@ import {
   SimpleCondition,
 } from '../ast/ast.js';
 import {must} from '../error/asserts.js';
-import {DifferenceStream, concat} from '../ivm/graph/difference-stream.js';
+import {DifferenceStream} from '../ivm/graph/difference-stream.js';
 
 export const orderingProp = Symbol();
 
@@ -152,7 +152,8 @@ function applyOr<T extends Entity>(
   // branch. Then we merge the branches back together. At this point we need to
   // ensure we do not get duplicate entries so we add a distinct operator
   const branches = conditions.map(c => applyWhere(stream, c));
-  return concat(branches).distinct();
+  const first = branches.shift();
+  return must(first).concat(branches).distinct();
 }
 
 function applySimpleCondition<T extends Entity>(

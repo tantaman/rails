@@ -1,12 +1,13 @@
 import {expect, test} from 'vitest';
 import {Entry, Multiset} from '../../multiset.js';
-import {DifferenceStream} from '../difference-stream.js';
 import {Version} from '../../types.js';
+import {Materialite} from '../../materialite.js';
 
 type E = {id: number};
 
+const m = new Materialite();
 test('does not emit any rows that fail the filter', () => {
-  const input = new DifferenceStream<E>();
+  const input = m.newStream<E>();
 
   const out = input.filter(_ => false);
   const items: E[] = [];
@@ -14,19 +15,20 @@ test('does not emit any rows that fail the filter', () => {
     items.push(e);
   });
 
-  input.newData(1, [
-    [{id: 1}, 1],
-    [{id: 2}, 2],
-    [{id: 1}, -1],
-    [{id: 2}, -2],
-  ]);
-  input.commit(1);
+  m.tx(() => {
+    input.newData(1, [
+      [{id: 1}, 1],
+      [{id: 2}, 2],
+      [{id: 1}, -1],
+      [{id: 2}, -2],
+    ]);
+  });
 
   expect(items.length).toBe(0);
 });
 
 test('emits all rows that pass the filter (including deletes / retractions)', () => {
-  const input = new DifferenceStream<E>();
+  const input = m.newStream<E>();
   const out = input.filter(_ => true);
 
   const items: Entry<E>[] = [];
@@ -34,13 +36,14 @@ test('emits all rows that pass the filter (including deletes / retractions)', ()
     items.push([e, mult]);
   });
 
-  input.newData(1, [
-    [{id: 1}, 1],
-    [{id: 2}, 2],
-    [{id: 1}, -1],
-    [{id: 2}, -2],
-  ]);
-  input.commit(1);
+  m.tx(() => {
+    input.newData(1, [
+      [{id: 1}, 1],
+      [{id: 2}, 2],
+      [{id: 1}, -1],
+      [{id: 2}, -2],
+    ]);
+  });
 
   expect(items).toEqual([
     [{id: 1}, 1],
@@ -51,7 +54,7 @@ test('emits all rows that pass the filter (including deletes / retractions)', ()
 });
 
 test('test that filter is lazy / the filter is not actually run until we pull on it', () => {
-  const input = new DifferenceStream<E>();
+  const input = m.newStream<E>();
   let called = false;
   const out = input.filter(_ => {
     called = true;
@@ -68,7 +71,6 @@ test('test that filter is lazy / the filter is not actually run until we pull on
     [{id: 1}, -1],
     [{id: 2}, -2],
   ]);
-  input.commit(1);
 
   // we run the graph but the filter is not run until we pull on it
   expect(called).toBe(false);
