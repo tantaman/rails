@@ -99,7 +99,7 @@ export class InnerJoinOperator<
     }
     this.#indexA.extend(deltaA);
 
-    for (const x of this.#indexA.join(aAs, deltaB, bAs, getBPrimaryKey)) {
+    for (const x of deltaB.join(bAs, this.#indexA, aAs, getAPrimaryKey)) {
       result.push(x);
     }
     this.#indexB.extend(deltaB);

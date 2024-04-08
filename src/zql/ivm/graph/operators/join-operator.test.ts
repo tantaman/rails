@@ -326,7 +326,7 @@ test('join through a junction table', () => {
     ],
     [
       {
-        id: '1_1-2_2',
+        id: '2_1-2_1',
         track: {id: 1, title: 'Track One', length: 1, albumId: 1},
         trackArtist: {trackId: 1, artistId: 2},
         artist: {id: 2, name: 'Artist Two'},
@@ -354,7 +354,7 @@ test('join through a junction table', () => {
   expect(items).toEqual([
     [
       {
-        id: '1_1-2_2',
+        id: '1-2_1_2',
         track: {id: 1, title: 'Track One', length: 1, albumId: 1},
         trackArtist: {trackId: 1, artistId: 2},
         artist: {id: 2, name: 'Artist Two'},
