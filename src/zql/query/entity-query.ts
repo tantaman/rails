@@ -283,6 +283,20 @@ export class EntityQuery<From extends FromSet, Return = []> {
     });
   }
 
+  join<OtherFromSet extends FromSet, OtherReturn, Alias extends string>(
+    other: EntityQuery<FromSet, OtherReturn>,
+    alias: Alias,
+    thisField: SimpleSelector<From>,
+    otherField: SimpleSelector<OtherFromSet>,
+  ): EntityQuery<
+    From & {
+      [K in Alias]: OtherReturn extends [] ? OtherReturn[number] : never;
+    },
+    Return
+  > {
+    throw new Error();
+  }
+
   limit(n: number) {
     if (this.#ast.limit !== undefined) {
       throw new Misuse('Limit already set');
